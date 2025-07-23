@@ -2,16 +2,17 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>3D Pixel Art with Three.js</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <title>3D Pixel Art with Three.js (iPad Compatible)</title>
     <style>
         body { margin: 0; overflow: hidden; }
-        #container { width: 100vw; height: 100vh; background-color: #000; } <!-- Added background color for visibility -->
+        #container { width: 100vw; height: 100vh; background-color: #000; }
     </style>
 </head>
 <body>
     <div id="container"></div>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.js"></script>
     <script>
         // Check if WebGL is supported
         if (!THREE.WEBGL.isWebGLAvailable()) {
@@ -23,18 +24,17 @@
         // Scene setup
         const scene = new THREE.Scene();
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-        const renderer = new THREE.WebGLRenderer();
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(window.devicePixelRatio);
+        renderer.setClearColor(0x000000, 1);
         document.getElementById('container').appendChild(renderer.domElement);
 
-        // Add a background color to the renderer for visibility
-        renderer.setClearColor(0x000000, 1); // Black background
-
         // Cube geometry and material
-        const cubeGeometry = new THREE.BoxGeometry(1, 1, 1); // Each cube is 1x1x1 unit
-        const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true }); // Default green color with wireframe for debugging
+        const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+        const cubeMaterial = new THREE.MeshBasicMaterial({ color: 0x00ff00, wireframe: true });
 
-        // Create a grid of cubes (e.g., 10x10x10)
+        // Create a grid of cubes
         const gridSize = 10;
         const halfSize = gridSize / 2;
         const cubes = [];
@@ -50,34 +50,49 @@
             }
         }
 
-        // Camera position (adjust as needed)
-        camera.position.set(0, 0, 20); // Move the camera back to see the entire grid
-        camera.lookAt(0, 0, 0); // Point the camera at the center of the scene
+        // Camera position
+        camera.position.set(0, 0, 20);
+        camera.lookAt(0, 0, 0);
 
-        // Add a simple light if using materials that require it (e.g., MeshPhongMaterial)
-        const light = new THREE.PointLight(0xffffff, 1, 100);
-        light.position.set(0, 0, 10);
-        scene.add(light);
+        // Orbit Controls for touch devices
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+        controls.dampingFactor = 0.05;
+        controls.screenSpacePanning = false;
+        controls.minDistance = 1;
+        controls.maxDistance = 50;
+        controls.maxPolarAngle = Math.PI / 2;
 
-        // Debugging: Log the number of objects in the scene
-        console.log('Number of objects in scene:', scene.children.length);
+        // Resize handler
+        window.addEventListener('resize', onWindowResize, false);
 
-        // Animation loop
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        // Animation loop with framerate cap
+        let lastFrameTime = performance.now();
         function animate() {
             requestAnimationFrame(animate);
-            renderer.render(scene, camera);
+            if (performance.now() - lastFrameTime >= 1000 / 30) {
+                controls.update();
+                renderer.render(scene, camera);
+                lastFrameTime = performance.now();
+            }
         }
         animate();
 
-        // Optional: Color each cube based on a pattern (e.g., checkerboard)
+        // Color each cube based on a pattern
         cubes.forEach((cube, index) => {
             const x = index % gridSize;
             const y = Math.floor((index / gridSize) % gridSize);
             const z = Math.floor(index / (gridSize * gridSize));
             if ((x + y + z) % 2 === 0) {
-                cube.material.color.set(0xff0000); // Red for even sum
+                cube.material.color.set(0xff0000);
             } else {
-                cube.material.color.set(0x0000ff); // Blue for odd sum
+                cube.material.color.set(0x0000ff);
             }
         });
     </script>
