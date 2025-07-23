@@ -1,88 +1,303 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-  <title>3D Pixel Art with Three.js (iPad Compatible)</title>
-  <style>
-    body { margin: 0; overflow: hidden; }
-    #container { width: 100vw; height: 100vh; background-color: #000; }
-  </style>
+<meta charset="utf-8" />
+<title>Genesis Evolution - Mobile Starter</title>
+
+<!-- Make it behave on iPhone/iPad -->
+<meta name="viewport"
+      content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+
+<style>
+  :root {
+    color-scheme: dark;
+  }
+  html, body {
+    margin: 0;
+    padding: 0;
+    background: #000;
+    overflow: hidden;              /* stop scrolling */
+    touch-action: none;            /* stop pinch/scroll gestures affecting canvas */
+    -webkit-user-select: none;
+    -webkit-touch-callout: none;
+  }
+  canvas {
+    display: block;
+    width: 100vw;
+    height: 100vh;
+  }
+  #hud {
+    position: fixed;
+    top: calc(env(safe-area-inset-top, 0px) + 10px);
+    left: calc(env(safe-area-inset-left, 0px) + 10px);
+    color: #fff;
+    background: rgba(0,0,0,.35);
+    padding: 8px 12px;
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    font-size: 16px;
+    line-height: 1.3;
+    border-radius: 6px;
+    pointer-events: none; /* don't block touches */
+  }
+  #debug {
+    display:none;
+    position:fixed;
+    bottom:calc(env(safe-area-inset-bottom,0px) + 10px);
+    left:calc(env(safe-area-inset-left,0px) + 10px);
+    color:#0f0;
+    font:12px monospace;
+  }
+</style>
 </head>
 <body>
-  <div id="container"></div>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/three.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r134/examples/js/controls/OrbitControls.min.js"></script>
-  <script>
-    // Scene setup
-    const scene = new THREE.Scene();
+<canvas id="game"></canvas>
+<div id="hud">
+  Mass: <span id="mass">10</span> |
+  Level: <span id="level">1</span>
+</div>
+<div id="debug"></div>
 
-    const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(0, 0, 20);
+<script>
+/* =========================
+   CONFIG
+========================= */
+const WORLD = {
+  foodCountTarget: 120,  // maintain ~this many food bits
+  foodRespawnPerFrame: 1 // try to add a little each frame if below target
+};
+const MASS_LEVEL_STEP = 25;     // mass needed per level (base)
+const MASS_DECAY_RATE = 0.0005; // slow passive decay per frame * mass
+const PLAYER_BASE_SPEED = 2.5;
+const PLAYER_SPEED_MASS_SLOW = 0.02; // minus speed per sqrt(mass)
+const RADIUS_SCALE = 1.6;       // visual growth vs mass
 
-    const renderer = new THREE.WebGLRenderer({ antialias: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(window.devicePixelRatio);
-    renderer.setClearColor(0x000000, 1);
-    document.getElementById('container').appendChild(renderer.domElement);
+/* =========================
+   CANVAS + DPR
+========================= */
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
 
-    // Controls
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.05;
-    controls.screenSpacePanning = false;
-    controls.minDistance = 1;
-    controls.maxDistance = 50;
-    controls.maxPolarAngle = Math.PI / 2;
+function resizeCanvas() {
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = Math.round(window.innerWidth  * dpr);
+  canvas.height = Math.round(window.innerHeight * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // scale drawing units to CSS px
+}
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
 
-    // Grid of cubes
-    const gridSize = 8; // Reduce for performance on mobile
-    const halfSize = gridSize / 2;
-    const cubes = [];
-    const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
+/* =========================
+   PLAYER
+========================= */
+const player = {
+  x: window.innerWidth / 2,
+  y: window.innerHeight / 2,
+  mass: 10,
+  level: 1,
+  color: 'lime'
+};
+function playerRadius() {
+  return Math.max(6, Math.sqrt(player.mass) * RADIUS_SCALE);
+}
+function playerSpeed() {
+  // heavier = slower
+  return Math.max(0.75, PLAYER_BASE_SPEED - Math.sqrt(player.mass)*PLAYER_SPEED_MASS_SLOW);
+}
 
-    for (let x = 0; x < gridSize; x++) {
-      for (let y = 0; y < gridSize; y++) {
-        for (let z = 0; z < gridSize; z++) {
-          const color = (x + y + z) % 2 === 0 ? 0xff0000 : 0x0000ff;
-          const material = new THREE.MeshBasicMaterial({ color, wireframe: true });
-          const cube = new THREE.Mesh(cubeGeometry, material);
-          cube.position.set(x - halfSize, y - halfSize, z - halfSize);
-          scene.add(cube);
-          cubes.push(cube);
-        }
-      }
+/* =========================
+   FOOD
+========================= */
+const food = [];
+function spawnFoodOne() {
+  food.push({
+    x: Math.random() * window.innerWidth,
+    y: Math.random() * window.innerHeight,
+    r: 4 + Math.random()*4,
+    color: 'white'
+  });
+}
+function ensureFood() {
+  if (food.length < WORLD.foodCountTarget) {
+    for (let i=0; i<WORLD.foodRespawnPerFrame; i++) spawnFoodOne();
+  }
+}
+// initial load
+for (let i=0; i<WORLD.foodCountTarget; i++) spawnFoodOne();
+
+/* =========================
+   TOUCH JOYSTICK (simple drag anywhere)
+   - touchstart sets target
+   - drag = direction vector
+========================= */
+let touchActive = false;
+let touchStartX = 0, touchStartY = 0;
+let moveDX = 0, moveDY = 0;
+let moveMag = 0;
+
+function handleTouchStart(ev) {
+  ev.preventDefault();
+  const t = ev.changedTouches[0];
+  touchActive = true;
+  touchStartX = t.clientX;
+  touchStartY = t.clientY;
+  moveDX = 0; moveDY = 0; moveMag = 0;
+}
+function handleTouchMove(ev) {
+  if (!touchActive) return;
+  ev.preventDefault();
+  const t = ev.changedTouches[0];
+  moveDX = t.clientX - touchStartX;
+  moveDY = t.clientY - touchStartY;
+  moveMag = Math.sqrt(moveDX*moveDX + moveDY*moveDY);
+}
+function handleTouchEnd(ev) {
+  ev.preventDefault();
+  touchActive = false;
+  moveDX = moveDY = moveMag = 0;
+}
+canvas.addEventListener('touchstart', handleTouchStart, {passive:false});
+canvas.addEventListener('touchmove',  handleTouchMove,  {passive:false});
+canvas.addEventListener('touchend',   handleTouchEnd,   {passive:false});
+canvas.addEventListener('touchcancel',handleTouchEnd,   {passive:false});
+
+/* =========================
+   OPTIONAL KEYBOARD (for desktop testing)
+========================= */
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.key] = true; });
+window.addEventListener('keyup',   e => { keys[e.key] = false; });
+
+/* =========================
+   GAME UPDATE
+========================= */
+function update() {
+  // movement from keys
+  let velX = 0, velY = 0;
+  if (keys['ArrowUp'] || keys['w']) velY -= 1;
+  if (keys['ArrowDown'] || keys['s']) velY += 1;
+  if (keys['ArrowLeft'] || keys['a']) velX -= 1;
+  if (keys['ArrowRight'] || keys['d']) velX += 1;
+
+  // movement from touch joystick
+  if (touchActive && moveMag > 5) {
+    velX += moveDX;
+    velY += moveDY;
+  }
+
+  // normalize
+  const mag = Math.sqrt(velX*velX + velY*velY);
+  if (mag > 0) {
+    velX /= mag; velY /= mag;
+    const spd = playerSpeed();
+    player.x += velX * spd;
+    player.y += velY * spd;
+  }
+
+  // clamp to screen
+  const r = playerRadius();
+  player.x = Math.max(r, Math.min(window.innerWidth  - r, player.x));
+  player.y = Math.max(r, Math.min(window.innerHeight - r, player.y));
+
+  // eat food
+  for (let i = food.length - 1; i >= 0; i--) {
+    const f = food[i];
+    const dx = player.x - f.x;
+    const dy = player.y - f.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    if (dist < r + f.r) {
+      player.mass += f.r; // gain mass from food
+      food.splice(i, 1);
     }
+  }
 
-    // Resize
-    window.addEventListener('resize', () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
-      renderer.setSize(window.innerWidth, window.innerHeight);
-    });
+  // decay
+  player.mass -= player.mass * MASS_DECAY_RATE;
+  if (player.mass < 1) player.mass = 1;
 
-    // WebGL context events
-    renderer.domElement.addEventListener('webglcontextlost', (event) => {
-      event.preventDefault();
-      console.warn('WebGL context lost');
-    });
+  // level check
+  const need = player.level * MASS_LEVEL_STEP;
+  if (player.mass >= need) {
+    player.level++;
+    // future: trigger evolution choice UI here
+    flashLevelUp();
+  }
 
-    renderer.domElement.addEventListener('webglcontextrestored', () => {
-      console.log('WebGL context restored');
-      // Optional: Reinitialize scene
-    });
+  // keep world stocked
+  ensureFood();
 
-    // Animation loop
-    let lastFrameTime = 0;
-    function animate(time) {
-      requestAnimationFrame(animate);
-      if (time - lastFrameTime >= 1000 / 30) {
-        controls.update();
-        renderer.render(scene, camera);
-        lastFrameTime = time;
-      }
-    }
-    animate();
-  </script>
+  // HUD
+  document.getElementById('mass').textContent = Math.floor(player.mass);
+  document.getElementById('level').textContent = player.level;
+}
+
+/* =========================
+   FLASH LEVEL UP (temporary placeholder)
+========================= */
+let flashTimer = 0;
+function flashLevelUp() {
+  flashTimer = 30; // frames
+}
+
+/* =========================
+   DRAW
+========================= */
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // stars background (cheap visual noise)
+  ctx.fillStyle = '#111';
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // draw food
+  food.forEach(f => {
+    ctx.fillStyle = f.color;
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, f.r, 0, Math.PI*2);
+    ctx.fill();
+  });
+
+  // draw player
+  const r = playerRadius();
+  ctx.fillStyle = player.color;
+  ctx.beginPath();
+  ctx.arc(player.x, player.y, r, 0, Math.PI*2);
+  ctx.fill();
+
+  // level flash
+  if (flashTimer > 0) {
+    ctx.strokeStyle = 'rgba(255,255,0,' + (flashTimer/30) + ')';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.arc(player.x, player.y, r + 8, 0, Math.PI*2);
+    ctx.stroke();
+    flashTimer--;
+  }
+
+  // draw touch joystick visual (debug)
+  // shows drag vector while touching
+  if (touchActive) {
+    ctx.strokeStyle = '#0f0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(touchStartX, touchStartY, 25, 0, Math.PI*2);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(touchStartX, touchStartY);
+    ctx.lineTo(touchStartX + moveDX, touchStartY + moveDY);
+    ctx.stroke();
+  }
+}
+
+/* =========================
+   MAIN LOOP
+========================= */
+function loop() {
+  update();
+  draw();
+  requestAnimationFrame(loop);
+}
+loop();
+</script>
 </body>
 </html>
