@@ -21,14 +21,21 @@
             throw new Error('WebGL is not supported');
         }
 
+        console.log('WebGL supported');
+
         // Scene setup
         const scene = new THREE.Scene();
+        console.log('Scene created');
+
         const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+        console.log('Camera created');
+
         const renderer = new THREE.WebGLRenderer({ antialias: true });
         renderer.setSize(window.innerWidth, window.innerHeight);
         renderer.setPixelRatio(window.devicePixelRatio);
         renderer.setClearColor(0x000000, 1);
         document.getElementById('container').appendChild(renderer.domElement);
+        console.log('Renderer initialized');
 
         // Cube geometry and material
         const cubeGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -39,6 +46,7 @@
         const halfSize = gridSize / 2;
         const cubes = [];
 
+        console.log('Starting cube creation');
         for (let x = 0; x < gridSize; x++) {
             for (let y = 0; y < gridSize; y++) {
                 for (let z = 0; z < gridSize; z++) {
@@ -49,10 +57,12 @@
                 }
             }
         }
+        console.log('Cube creation complete. Number of cubes:', cubes.length);
 
         // Camera position
         camera.position.set(0, 0, 20);
         camera.lookAt(0, 0, 0);
+        console.log('Camera positioned at:', camera.position);
 
         // Orbit Controls for touch devices
         const controls = new THREE.OrbitControls(camera, renderer.domElement);
@@ -72,6 +82,17 @@
             renderer.setSize(window.innerWidth, window.innerHeight);
         }
 
+        // WebGL context events
+        renderer.domElement.addEventListener('webglcontextlost', function(event) {
+            event.preventDefault();
+            console.log('WebGL context lost');
+        }, false);
+
+        renderer.domElement.addEventListener('webglcontextrestored', function(event) {
+            console.log('WebGL context restored');
+            // Reinitialize the scene if necessary
+        }, false);
+
         // Animation loop with framerate cap
         let lastFrameTime = performance.now();
         function animate() {
@@ -82,6 +103,7 @@
                 lastFrameTime = performance.now();
             }
         }
+        console.log('Starting animation loop');
         animate();
 
         // Color each cube based on a pattern
