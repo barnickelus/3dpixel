@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Dragon Head — 160-frame Sprite Demo</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<link rel="stylesheet" href="dragon_sprite_160f_48px.css">
+
+<style>
+body{
+  margin:0; height:100vh; display:flex; justify-content:center; align-items:center;
+  background:#202024; color:#eee; font-family:system-ui, sans-serif; flex-direction:column;
+}
+#info{margin-top:1rem;font-size:.9rem;opacity:.8}
+</style>
+</head>
+<body>
+
+<div id="sprite" class="dragon dragon-f64"></div> <!-- start: yaw 0°, pitch 0° (row 2) -->
+<div id="info">←/→ rotate ↑/↓ tilt (space) auto-spin</div>
+
+<script>
+/* grid description (match sheet) */
+const TILE = 48, YAW = 32, PITCH = 5;
+
+/* state */
+let yaw = 0, pitch = 2;         // start facing forward, level
+let auto = true;                // auto-spin flag
+const sprite = document.getElementById('sprite');
+
+function applyFrame(){
+  const idx = pitch * YAW + yaw;
+  sprite.className = `dragon dragon-f${idx}`;
+}
+applyFrame();
+
+/* keyboard controls */
+window.addEventListener('keydown', e=>{
+  switch(e.key){
+    case 'ArrowRight': yaw = (yaw + 1) % YAW; auto = false; break;
+    case 'ArrowLeft' : yaw = (yaw - 1 + YAW) % YAW; auto = false; break;
+    case 'ArrowUp'   : pitch = Math.max(0, pitch - 1); auto = false; break;
+    case 'ArrowDown' : pitch = Math.min(PITCH - 1, pitch + 1); auto = false; break;
+    case ' ': auto = !auto; break;             // toggle auto-spin
+  }
+  applyFrame();
+});
+
+/* simple auto-spin loop */
+setInterval(()=>{
+  if(auto){
+    yaw = (yaw + 1) % YAW;
+    applyFrame();
+  }
+}, 120);  // speed in ms
+</script>
+</body>
+</html>
