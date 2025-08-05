@@ -2,9 +2,10 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Dragon Sprite-Sheet Maker (PNG + CSS + JSON)</title>
+<title>Sprite-Sheet Maker (tile, angles, cols)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
 
+<!-- Three.js + loaders -->
 <script type="importmap">
 {
   "imports":{
@@ -16,23 +17,28 @@
 </script>
 
 <style>
-body{font-family:system-ui;background:#111;color:#eee;margin:0;padding:1rem;text-align:center}
+body  {font-family:system-ui;background:#111;color:#eee;margin:0;padding:1rem;text-align:center}
 canvas{display:none}
 #sheetPreview{max-width:100%;image-rendering:pixelated;border:1px solid #555;margin-top:1rem}
-label{display:block;margin:.7rem auto}
-button{margin-top:1rem;padding:.6rem 1.2rem;font-size:1rem}
-a.fileLink{display:block;margin-top:.4rem;color:#4df;text-decoration:none}
+label {display:block;margin:.6rem auto}
+input[type=number]{width:6rem}
+button{margin-top:1rem;padding:.6rem 1.3rem;font-size:1rem}
+a.fileLink{display:block;margin-top:.45rem;color:#4df;text-decoration:none}
 </style>
 </head>
 <body>
 
-<h2>Dragon Sprite-Sheet Maker</h2>
+<h2>Sprite-Sheet Maker</h2>
 
-<label>OBJ file <input type="file" id="obj"></label>
-<label>MTL file <input type="file" id="mtl"></label>
-<label>Texture (JPEG/PNG) <input type="file" id="tex"></label>
+<label>OBJ file  <input type="file" id="obj"></label>
+<label>MTL file  <input type="file" id="mtl"></label>
+<label>Texture   <input type="file" id="tex"></label>
+
+<label>Tile size (px)     <input type="number" id="tile" value="256" min="16"></label>
+<label>Angles / frames    <input type="number" id="frames" value="32" min="1"></label>
+<label>Columns (optional) <input type="number" id="cols"  placeholder="auto" min="1"></label>
+
 <button id="go">Start</button>
-
 <img id="sheetPreview" hidden>
 
 <script type="module">
@@ -40,93 +46,88 @@ import * as THREE from 'three';
 import { OBJLoader } from 'OBJLoader';
 import { MTLLoader } from 'MTLLoader';
 
-const SIZE   = 256, COLS = 8, ROWS = 4, FRAMES = COLS * ROWS;
-const button = document.getElementById('go');
-const preview= document.getElementById('sheetPreview');
+const $ = id=>document.getElementById(id);
 
-/* helper → offer any Blob/Text as a download link */
-function makeLink(blobOrText, name, mime='text/plain'){
-  const blob = blobOrText instanceof Blob ? blobOrText
-              : new Blob([blobOrText],{type:mime});
-  const url  = URL.createObjectURL(blob);
-  const a    = document.createElement('a');
-  a.href = url; a.download = name; a.textContent = `Download ${name}`;
-  a.className = 'fileLink';
-  document.body.appendChild(a);
+/* helper → create download link */
+function linkFrom(data,name,type='text/plain'){
+  const blob=data instanceof Blob?data:new Blob([data],{type});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name; a.textContent='Download '+name;
+  a.className='fileLink'; document.body.appendChild(a);
 }
 
-button.onclick = async () => {
-  button.disabled = true; button.textContent = 'Working…';
+/* main click ----------------------------------------------------------- */
+$('go').onclick = async ()=>{
+  const [objFile,mtlFile,texFile]=['obj','mtl','tex'].map(id=>$ (id).files[0]);
+  if(!objFile||!mtlFile||!texFile){alert('Need OBJ, MTL, texture');return;}
 
-  /* 1 ▸ gather local files */
-  const objFile=document.getElementById('obj').files[0],
-        mtlFile=document.getElementById('mtl').files[0],
-        texFile=document.getElementById('tex').files[0];
-  if(!objFile||!mtlFile||!texFile){
-    alert('Choose OBJ, MTL and texture'); button.disabled=false; return;
-  }
-  const objURL=URL.createObjectURL(objFile),
-        mtlURL=URL.createObjectURL(mtlFile);
+  const TILE = Math.max(16, +$('tile').value||256);
+  const FR   = Math.max(1 , +$('frames').value||32);
+  let   COLS = +$('cols').value||0;
+  if(!COLS||COLS>FR) COLS = Math.ceil(Math.sqrt(FR));       // tidy grid
+  const ROWS = Math.ceil(FR/COLS);
 
-  /* 2 ▸ Three.js scene */
+  $('go').disabled=true; $('go').textContent='Working…';
+
+  /* Three.js scene ---------------------------------------------------- */
   const scene=new THREE.Scene();
-  const cam=new THREE.PerspectiveCamera(30,1,0.01,100);
-  const renderer=new THREE.WebGLRenderer({preserveDrawingBuffer:true,alpha:true});
-  renderer.setSize(SIZE,SIZE);
-  document.body.appendChild(renderer.domElement);
+  const cam  =new THREE.PerspectiveCamera(30,1,0.01,100);
+  const ren  =new THREE.WebGLRenderer({preserveDrawingBuffer:true,alpha:true});
+  ren.setSize(TILE,TILE); document.body.appendChild(ren.domElement);
 
   scene.add(new THREE.AmbientLight(0xffffff,0.6));
   const key=new THREE.PointLight(0xffffff,0.8); key.position.set(5,5,5); scene.add(key);
 
-  const mtl=await new MTLLoader().loadAsync(mtlURL); mtl.preload();
-  const obj=await new OBJLoader().setMaterials(mtl).loadAsync(objURL);
+  const mtl=await new MTLLoader().loadAsync(URL.createObjectURL(mtlFile)); mtl.preload();
+  const obj=await new OBJLoader().setMaterials(mtl).loadAsync(URL.createObjectURL(objFile));
   scene.add(obj);
 
   const box=new THREE.Box3().setFromObject(obj);
-  obj.position.sub(box.getCenter(new THREE.Vector3()));   // centre
+  obj.position.sub(box.getCenter(new THREE.Vector3()));
   cam.position.set(0,0,box.getSize(new THREE.Vector3()).length()*1.1);
   cam.lookAt(0,0,0);
 
-  /* 3 ▸ sheet canvas */
+  /* sheet canvas ------------------------------------------------------ */
   const sheet=document.createElement('canvas');
-  sheet.width=SIZE*COLS; sheet.height=SIZE*ROWS;
-  const sCtx=sheet.getContext('2d');
+  sheet.width=TILE*COLS; sheet.height=TILE*ROWS;
+  const ctx=sheet.getContext('2d');
 
-  /* 4 ▸ render each frame (row-major) */
-  for(let i=0;i<FRAMES;i++){
-    obj.rotation.y = -i*(2*Math.PI/FRAMES);
-    renderer.render(scene,cam);
-
-    const col=i%COLS, row=Math.floor(i/COLS);      // TOP row = 0
-    sCtx.drawImage(renderer.domElement,col*SIZE,row*SIZE);
-    await new Promise(r=>setTimeout(r,8));         // keeps UI responsive
+  for(let i=0;i<FR;i++){
+    obj.rotation.y = -i*(2*Math.PI/FR);
+    ren.render(scene,cam);
+    const c=i%COLS, r=Math.floor(i/COLS);
+    ctx.drawImage(ren.domElement,c*TILE,r*TILE);
+    await new Promise(r=>setTimeout(r,6));
   }
 
-  /* 5 ▸ output PNG */
+  /* Filenames reflect FR & TILE for clarity */
+  const base = `dragon_sprite_${FR}f_${TILE}px`;
+  const pngName = base + '.png';
+
+  /* PNG out */
   sheet.toBlob(blob=>{
-    preview.src=URL.createObjectURL(blob); preview.hidden=false;
-    makeLink(blob,'dragon_head_sprite_32x256.png','image/png');
+    $('sheetPreview').src=URL.createObjectURL(blob);
+    $('sheetPreview').hidden=false;
+    linkFrom(blob,pngName,'image/png');
   },'image/png');
 
-  /* 6 ▸ build CSS + JSON atlas */
-  let css='.dragon{width:'+SIZE+'px;height:'+SIZE+
-          'px;background-image:url("dragon_head_sprite_32x256.png");' +
-          'background-repeat:no-repeat;image-rendering:pixelated;}\n';
-  const atlas={meta:{image:'dragon_head_sprite_32x256.png',
-                     size:{w:SIZE*COLS,h:SIZE*ROWS},
-                     frameSize:{w:SIZE,h:SIZE},columns:COLS,rows:ROWS},
+  /* CSS + JSON atlas -------------------------------------------------- */
+  let css = `.dragon{width:${TILE}px;height:${TILE}px;`+
+            `background-image:url("${pngName}");background-repeat:no-repeat;`+
+            `image-rendering:pixelated;}\n`;
+  const atlas={meta:{image:pngName,size:{w:TILE*COLS,h:TILE*ROWS},
+                     frameSize:{w:TILE,h:TILE},columns:COLS,rows:ROWS},
                frames:[]};
 
-  for(let i=0;i<FRAMES;i++){
-    const col=i%COLS,row=Math.floor(i/COLS);
-    const x=col*SIZE, y=row*SIZE;
+  for(let i=0;i<FR;i++){
+    const c=i%COLS,r=Math.floor(i/COLS),x=c*TILE,y=r*TILE;
     css+=`.dragon-f${i}{background-position:-${x}px -${y}px;}\n`;
-    atlas.frames.push({name:`f${i}`,x,y,w:SIZE,h:SIZE});
+    atlas.frames.push({name:`f${i}`,x,y,w:TILE,h:TILE});
   }
-  makeLink(css,'dragon_head.css');
-  makeLink(JSON.stringify(atlas,null,2),'dragon_head.json');
+  linkFrom(css,  base+'.css');
+  linkFrom(JSON.stringify(atlas,null,2), base+'.json');
 
-  button.textContent='Done';
+  $('go').textContent='Done';
 };
 </script>
 </body>
