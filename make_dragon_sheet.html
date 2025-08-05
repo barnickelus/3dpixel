@@ -1,27 +1,46 @@
 <!DOCTYPE html>
 <html lang="en"><head>
 <meta charset="utf-8">
-<title>Sprite-Sheet Maker (yaw × pitch)</title>
+<title>Sprite-Sheet Maker (yaw × pitch, with progress)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<script type="importmap"> … same three.js importmap … </script>
-<style> … same CSS … </style>
-</head><body>
+
+<!-- Three.js + loaders -->
+<script type="importmap">
+{
+  "imports":{
+    "three":"https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js",
+    "OBJLoader":"https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/loaders/OBJLoader.js",
+    "MTLLoader":"https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/loaders/MTLLoader.js"
+  }
+}
+</script>
+
+<style>
+body{font-family:system-ui;background:#111;color:#eee;margin:0;padding:1rem;text-align:center}
+label{display:block;margin:.5rem auto}
+input[type=number]{width:5rem}
+button{margin-top:1rem;padding:.6rem 1.2rem;font-size:1rem}
+canvas{display:none}
+#sheetPreview{max-width:100%;image-rendering:pixelated;border:1px solid #555;margin-top:1rem}
+a.fileLink{display:block;margin-top:.4rem;color:#4df;text-decoration:none}
+#status{margin-top:.7rem;font-size:.9rem}
+.error{color:#f55}
+</style></head><body>
 
 <h2>Sprite-Sheet Maker</h2>
 
-<!-- model + texture -->
 <label>OBJ file  <input type="file" id="obj"></label>
 <label>MTL file  <input type="file" id="mtl"></label>
 <label>Texture   <input type="file" id="tex"></label>
 
-<!-- grid -->
-<label>Tile size (px)     <input type="number" id="tile"   value="256"  min="16"></label>
-<label>Yaw frames         <input type="number" id="yaw"    value="32"   min="1"></label>
-<label>Pitch frames       <input type="number" id="pitch"  value="5"    min="1"></label>    <!-- 🔸 -->
-<label>Pitch range (°)    <input type="number" id="range"  value="60"   min="0" max="90"></label> <!-- 🔸 -->
-<label>Columns (optional) <input type="number" id="cols"   placeholder="auto" min="1"></label>
+<label>Tile px      <input type="number" id="tile"  value="256" min="16"></label>
+<label>Yaw frames   <input type="number" id="yaw"   value="32"  min="1"></label>
+<label>Pitch frames <input type="number" id="pit"   value="5"   min="1"></label>
+<label>Pitch range° <input type="number" id="rng"   value="60"  min="0" max="90"></label>
+<label>Columns (auto ok) <input type="number" id="cols" placeholder="auto" min="1"></label>
 
 <button id="go">Start</button>
+<div id="status"></div>
 <img id="sheetPreview" hidden>
 
 <script type="module">
@@ -30,89 +49,101 @@ import { OBJLoader } from 'OBJLoader';
 import { MTLLoader } from 'MTLLoader';
 
 const $ = id=>document.getElementById(id);
-function linkFrom(data,name,type='text/plain'){ … same helper … }
+const log=(msg,isErr=false)=>{$('status').innerHTML=msg; $('status').className=isErr?'error':''}
+const linkFrom=(data,name,type='text/plain')=>{
+  const blob=data instanceof Blob?data:new Blob([data],{type});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download=name; a.textContent='Download '+name;
+  a.className='fileLink'; document.body.appendChild(a);
+};
 
-$('go').onclick = async () => {
-  const [objFile,mtlFile,texFile]=['obj','mtl','tex'].map(id=>$ (id).files[0]);
-  if(!objFile||!mtlFile||!texFile){alert('Need OBJ, MTL, texture');return;}
+$('go').onclick = async ()=>{
+  log('');
+  const objF=$('obj').files[0], mtlF=$('mtl').files[0], texF=$('tex').files[0];
+  if(!objF||!mtlF||!texF){ log('Please choose OBJ, MTL and texture ↑',true); return; }
 
-  /* read form values -------------------------------------------------- */
-  const TILE = Math.max(16,+$('tile').value||256);
-  const YAW  = Math.max(1 ,+$('yaw').value ||32);
-  const PIT  = Math.max(1 ,+$('pitch').value||1);          // 🔸 may be 1 (no pitch)
-  const RANGE= Math.max(0 ,Math.min(90,+$('range').value||60)); // 🔸 clamp 0-90
+  const TILE = +$('tile').value||256;
+  const YAW  = +$('yaw').value ||32;
+  const PIT  = +$('pit').value ||1;
+  const RNG  = +$('rng').value ||0;
   let   COLS = +$('cols').value||0;
-  if(!COLS||COLS<YAW) COLS = YAW;                         // one full yaw row
-  const ROWS = PIT;
-  const FR   = YAW * PIT;
+  if(!COLS||COLS<YAW) COLS=YAW;
+  const ROWS=PIT, FR=YAW*PIT;
 
   $('go').disabled=true; $('go').textContent='Working…';
+  log('Loading model…');
 
-  /* Three.js boilerplate --------------------------------------------- */
-  … identical scene / camera / lighting / OBJ load …
+  /* Three.js bootstrap */
+  const scene=new THREE.Scene();
+  const cam=new THREE.PerspectiveCamera(30,1,0.01,100);
+  const ren=new THREE.WebGLRenderer({preserveDrawingBuffer:true,alpha:true});
+  ren.setSize(TILE,TILE); document.body.appendChild(ren.domElement);
+  scene.add(new THREE.AmbientLight(0xffffff,0.6));
+  const key=new THREE.PointLight(0xffffff,0.8); key.position.set(5,5,5); scene.add(key);
 
-  /* build pitch angle list ------------------------------------------- */
-  // +RANGE (top) .. 0 .. -RANGE (bottom) evenly across PIT steps
-  const pitchAngles=[];
-  for(let p=0;p<PIT;p++){
-     pitchAngles.push(THREE.MathUtils.degToRad(
-        RANGE - (2*RANGE)*(p/(PIT-1||1)) ));              // PIT==1 → 0°
-  }
+  try{
+    const mtl=await new MTLLoader().loadAsync(URL.createObjectURL(mtlF)); mtl.preload();
+    const obj=await new OBJLoader().setMaterials(mtl).loadAsync(URL.createObjectURL(objF));
+    scene.add(obj);
 
-  /* sheet canvas ----------------------------------------------------- */
-  const sheet=document.createElement('canvas');
-  sheet.width = TILE * COLS;
-  sheet.height= TILE * ROWS;
-  const ctx = sheet.getContext('2d');
+    /* centre & camera distance */
+    const box=new THREE.Box3().setFromObject(obj);
+    obj.position.sub(box.getCenter(new THREE.Vector3()));
+    cam.position.set(0,0,box.getSize(new THREE.Vector3()).length()*1.1);
+    cam.lookAt(0,0,0);
 
-  /* render ----------------------------------------------------------- */
-  let index=0;
-  for(let pr=0; pr<PIT; pr++){              // row = pitch
-    obj.rotation.x = pitchAngles[pr];
-    for(let yr=0; yr<YAW; yr++){            // col = yaw
-      obj.rotation.y = -yr*(2*Math.PI/YAW);
-      cam.lookAt(0,0,0);                    // keep camera fixed
-      cam.updateMatrixWorld();
-      ren.render(scene,cam);
+    /* pitch list */
+    const pitchDegs = Array.from({length:PIT},(_,p)=>
+      RNG - 2*RNG*(PIT===1?0:p/(PIT-1)));
+    const pitchRad  = pitchDegs.map(THREE.MathUtils.degToRad);
 
-      const x=(yr%COLS)*TILE, y=pr*TILE;
-      ctx.drawImage(ren.domElement,x,y);
-      index++;
-      await new Promise(r=>setTimeout(r,5));
+    /* sheet */
+    const sheet=document.createElement('canvas');
+    sheet.width=TILE*COLS; sheet.height=TILE*ROWS;
+    const ctx=sheet.getContext('2d');
+
+    let idx=0;
+    for(let pr=0;pr<PIT;pr++){
+      obj.rotation.x=pitchRad[pr];
+      for(let yr=0;yr<YAW;yr++){
+        obj.rotation.y=-yr*(2*Math.PI/YAW);
+        ren.render(scene,cam);
+        ctx.drawImage(ren.domElement,yr*TILE,pr*TILE);
+        idx++; log(`Rendering ${idx}/${FR}…`);
+        await new Promise(r=>setTimeout(r,4)); // keep UI responsive
+      }
     }
-  }
 
-  /* filenames -------------------------------------------------------- */
-  const base=`dragon_sprite_${FR}f_${TILE}px_${YAW}yaw_${PIT}pit`;
-  const pngName=base+'.png';
+    /* save PNG */
+    const base=`sprite_${FR}f_${TILE}px_${YAW}yaw_${PIT}pit`;
+    sheet.toBlob(blob=>{
+      $('sheetPreview').src=URL.createObjectURL(blob);
+      $('sheetPreview').hidden=false;
+      linkFrom(blob,base+'.png','image/png');
+    });
 
-  /* PNG + links ------------------------------------------------------ */
-  sheet.toBlob(b=>{
-     $('sheetPreview').src=URL.createObjectURL(b); $('sheetPreview').hidden=false;
-     linkFrom(b,pngName,'image/png');
-  },'image/png');
+    /* CSS + JSON */
+    let css=`.dragon{width:${TILE}px;height:${TILE}px;background-image:url("${base}.png");background-repeat:no-repeat;image-rendering:pixelated;}\n`;
+    const atlas={meta:{image:base+'.png',size:{w:TILE*COLS,h:TILE*ROWS},
+                       frameSize:{w:TILE,h:TILE},columns:COLS,rows:ROWS},frames:[]};
 
-  /* CSS + JSON atlas ------------------------------------------------- */
-  let css=`.dragon{width:${TILE}px;height:${TILE}px;`+
-          `background-image:url("${pngName}");background-repeat:no-repeat;`+
-          `image-rendering:pixelated;}\n`;
-  const atlas={meta:{image:pngName,size:{w:TILE*COLS,h:TILE*ROWS},
-                     frameSize:{w:TILE,h:TILE},columns:COLS,rows:ROWS},
-               frames:[]};
-
-  index=0;
-  for(let pr=0;pr<PIT;pr++){
-    for(let yr=0;yr<YAW;yr++){
-      const x=yr*TILE, y=pr*TILE;
-      css+=`.dragon-f${index}{background-position:-${x}px -${y}px;}\n`;
-      atlas.frames.push({name:`f${index}`,x,y,w:TILE,h:TILE});
-      index++;
+    idx=0;
+    for(let pr=0;pr<PIT;pr++){
+      for(let yr=0;yr<YAW;yr++){
+        css+=`.dragon-f${idx}{background-position:-${yr*TILE}px -${pr*TILE}px;}\n`;
+        atlas.frames.push({name:`f${idx}`,x:yr*TILE,y:pr*TILE,w:TILE,h:TILE});
+        idx++;
+      }
     }
-  }
-  linkFrom(css,  base+'.css');
-  linkFrom(JSON.stringify(atlas,null,2), base+'.json');
+    linkFrom(css,base+'.css');
+    linkFrom(JSON.stringify(atlas,null,2),base+'.json');
 
-  $('go').textContent='Done';
+    log('Done ✓');
+  }catch(e){
+    console.error(e);
+    log('Error – see console (tap Safari share → “Show Web Inspector”).',true);
+  }
+  $('go').disabled=false; $('go').textContent='Start';
 };
 </script>
 </body></html>
