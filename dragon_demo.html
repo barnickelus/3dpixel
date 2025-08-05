@@ -2,26 +2,56 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Dragon 160-frame Demo (iPad)</title>
+<title>Dragon Head – 160-frame Demo (iPad)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+
 <style>
+/* ---------- CONFIG --------------------------------------------------- */
 :root{
-  --tile:48px;                     /* frame size (match sheet)       */
-  --cols:32;                       /* yaw steps                      */
-  --rows:5;                        /* pitch steps                    */
-  --sheet: url("dragon_sprite_160f_48px.png");
+  --tile:48px;                               /* native frame size      */
+  --cols:32;                                 /* yaw frames             */
+  --rows:5;                                  /* pitch frames           */
+  --sheet:url("dragon_sprite_160f_48px.png");/* sprite PNG             */
+
+  --zoom:4;                                  /* 1-6   live-adjustable  */
 }
-html,body{height:100%;margin:0;background:#202024;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui;color:#eee;-webkit-user-select:none;user-select:none}
-#sprite{width:var(--tile);height:var(--tile);background-image:var(--sheet);image-rendering:pixelated;background-repeat:no-repeat}
-#controls{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1.3rem}
-button{font-size:1.3rem;padding:.5rem .8rem;border:none;border-radius:6px;background:#444;color:#fff}
+
+/* ---------- BASE LAYOUT --------------------------------------------- */
+html,body{
+  height:100%;margin:0;
+  display:flex;flex-direction:column;justify-content:center;align-items:center;
+  background:#202024;color:#eee;font-family:system-ui,-apple-system,sans-serif;
+  -webkit-user-select:none;user-select:none;touch-action:none;
+}
+#sprite{
+  width:calc(var(--tile)*var(--zoom));
+  height:calc(var(--tile)*var(--zoom));
+  background-image:var(--sheet);
+  background-repeat:no-repeat;
+  background-size:calc(var(--tile)*var(--cols)*var(--zoom))
+                  calc(var(--tile)*var(--rows)*var(--zoom));
+  image-rendering:pixelated;
+  transform-origin:top left;
+}
+#controls{
+  display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1.4rem
+}
+button{
+  font-size:1.4rem;padding:.52rem .9rem;border:none;border-radius:6px;
+  background:#444;color:#fff
+}
 button:active{background:#666}
+#zoomWrap{margin-top:1rem;display:flex;gap:.5rem;align-items:center}
+input[type=range]{width:140px}
+small{opacity:.6}
 </style>
 </head>
 <body>
 
+<!-- the sprite -->
 <div id="sprite"></div>
 
+<!-- arrow & play controls -->
 <div id="controls">
   <button id="up">▲</button>
   <button id="left">◀︎</button>
@@ -30,59 +60,68 @@ button:active{background:#666}
   <button id="down">▼</button>
 </div>
 
+<!-- size slider -->
+<div id="zoomWrap">
+  Size <small>(×)</small>
+  <input type="range" min="1" max="6" value="4" id="zoom">
+</div>
+
 <script>
-/* grid config – keep in sync with CSS vars */
-const COLS = 32;           // yaw steps
-const ROWS = 5;            // pitch steps
+/* ---------- GRID INFO (sync with :root) ------------------------------ */
+const COLS = 32, ROWS = 5;
+const rootStyle = document.documentElement.style;
 const sprite = document.getElementById('sprite');
 
-/* state */
-let yaw = 0;               // 0 … 31
-let pitch = 2;             // 0 (top) … 4 (bottom)
+/* ---------- STATE ---------------------------------------------------- */
+let yaw = 0;         // 0-31
+let pitch = 2;       // 0-4   (middle row)
 let auto = true;
 
-/* helpers */
-function setOffset(){
-  /* BG-pos uses CSS pixels (col * –tile, row * –tile) */
-  const x = -yaw   * 48;   // 48 = tile px
-  const y = -pitch * 48;
-  sprite.style.backgroundPosition = `${x}px ${y}px`;
+/* helper: update CSS background-position ----------------------------- */
+function applyFrame(){
+  const tile = parseInt(getComputedStyle(document.documentElement)
+                        .getPropertyValue('--tile'));
+  const zoom = parseInt(getComputedStyle(document.documentElement)
+                        .getPropertyValue('--zoom'));
+  const step = tile * zoom;
+  sprite.style.backgroundPosition = `${-yaw*step}px ${-pitch*step}px`;
 }
-setOffset();
+applyFrame();
 
-/* autorotate loop */
-function tick(){
-  if(auto){
-    yaw = (yaw + 1) % COLS;
-    setOffset();
-  }
-  requestAnimationFrame(tick);
+/* ---------- autorotate ---------------------------------------------- */
+function loop(){
+  if(auto){ yaw = (yaw+1)%COLS; applyFrame(); }
+  requestAnimationFrame(loop);
 }
-tick();
+loop();
 
-/* button handlers */
-const clamp = (val,min,max)=>Math.max(min,Math.min(max,val));
-document.getElementById('left' ).onclick = ()=>{auto=false; yaw = (yaw-1+COLS)%COLS; setOffset();};
-document.getElementById('right').onclick = ()=>{auto=false; yaw = (yaw+1)%COLS;     setOffset();};
-document.getElementById('up'   ).onclick = ()=>{auto=false; pitch = clamp(pitch-1,0,ROWS-1); setOffset();};
-document.getElementById('down' ).onclick = ()=>{auto=false; pitch = clamp(pitch+1,0,ROWS-1); setOffset();};
-document.getElementById('play' ).onclick = ()=>{auto=!auto;};
+/* ---------- button events ------------------------------------------- */
+const clamp=(v,min,max)=>Math.max(min,Math.min(max,v));
+const left =()=>{auto=false; yaw=(yaw-1+COLS)%COLS; applyFrame();};
+const rght =()=>{auto=false; yaw=(yaw+1)%COLS; applyFrame();};
+const up   =()=>{auto=false; pitch=clamp(pitch-1,0,ROWS-1); applyFrame();};
+const down =()=>{auto=false; pitch=clamp(pitch+1,0,ROWS-1); applyFrame();};
+document.getElementById('left' ).onclick=left;
+document.getElementById('right').onclick=rght;
+document.getElementById('up'   ).onclick=up;
+document.getElementById('down' ).onclick=down;
+document.getElementById('play' ).onclick=()=>auto=!auto;
 
-/* swipe gesture (touch & mouse drag) */
-let startX,startY;
+/* ---------- size slider --------------------------------------------- */
+document.getElementById('zoom').oninput = e=>{
+  rootStyle.setProperty('--zoom', e.target.value);
+  applyFrame();
+};
+
+/* ---------- swipe gestures ------------------------------------------ */
+let sx,sy;
 sprite.addEventListener('pointerdown',e=>{
-  startX=e.clientX; startY=e.clientY;
-  sprite.setPointerCapture(e.pointerId);
+  sx=e.clientX; sy=e.clientY; sprite.setPointerCapture(e.pointerId);
 });
 sprite.addEventListener('pointerup',e=>{
-  const dx=e.clientX-startX, dy=e.clientY-startY;
-  if(Math.abs(dx)>Math.abs(dy)){
-    if(dx>10) document.getElementById('right').click();
-    if(dx<-10)document.getElementById('left').click();
-  }else{
-    if(dy>10) document.getElementById('down').click();
-    if(dy<-10)document.getElementById('up').click();
-  }
+  const dx=e.clientX-sx, dy=e.clientY-sy;
+  if(Math.abs(dx)>Math.abs(dy)){ dx>10 ? rght() : dx<-10 && left(); }
+  else                         { dy>10 ? down() : dy<-10 && up(); }
 });
 </script>
 </body>
