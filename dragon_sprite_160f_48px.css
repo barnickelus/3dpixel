@@ -1,0 +1,55 @@
+/* 160-frame dragon head, 32 cols × 5 rows, 48 px tiles */
+.dragon{width:48px;height:48px;
+        background-image:url("dragon_sprite_160f_48px.png");
+        background-repeat:no-repeat;
+        image-rendering:pixelated;}
+
+.dragon-f0  {background-position:   -0px   -0px;}
+.dragon-f1  {background-position:  -48px   -0px;}
+.dragon-f2  {background-position:  -96px   -0px;}
+.dragon-f3  {background-position: -144px   -0px;}
+.dragon-f4  {background-position: -192px   -0px;}
+.dragon-f5  {background-position: -240px   -0px;}
+.dragon-f6  {background-position: -288px   -0px;}
+.dragon-f7  {background-position: -336px   -0px;}
+.dragon-f8  {background-position: -384px   -0px;}
+.dragon-f9  {background-position: -432px   -0px;}
+.dragon-f10 {background-position: -480px   -0px;}
+.dragon-f11 {background-position: -528px   -0px;}
+.dragon-f12 {background-position: -576px   -0px;}
+.dragon-f13 {background-position: -624px   -0px;}
+.dragon-f14 {background-position: -672px   -0px;}
+.dragon-f15 {background-position: -720px   -0px;}
+.dragon-f16 {background-position: -768px   -0px;}
+.dragon-f17 {background-position: -816px   -0px;}
+.dragon-f18 {background-position: -864px   -0px;}
+.dragon-f19 {background-position: -912px   -0px;}
+.dragon-f20 {background-position: -960px   -0px;}
+.dragon-f21 {background-position:-1008px   -0px;}
+.dragon-f22 {background-position:-1056px   -0px;}
+.dragon-f23 {background-position:-1104px   -0px;}
+.dragon-f24 {background-position:-1152px   -0px;}
+.dragon-f25 {background-position:-1200px   -0px;}
+.dragon-f26 {background-position:-1248px   -0px;}
+.dragon-f27 {background-position:-1296px   -0px;}
+.dragon-f28 {background-position:-1344px   -0px;}
+.dragon-f29 {background-position:-1392px   -0px;}
+.dragon-f30 {background-position:-1440px   -0px;}
+.dragon-f31 {background-position:-1488px   -0px;}
+
+.dragon-f32 {background-position:   -0px  -48px;}
+.dragon-f33 {background-position:  -48px  -48px;}
+.dragon-f34 {background-position:  -96px  -48px;}
+.dragon-f35 {background-position: -144px  -48px;}
+…  /* keep the sequence going */ …
+.dragon-f62 {background-position:-1392px  -48px;}
+.dragon-f63 {background-position:-1488px  -48px;}
+
+.dragon-f64 {background-position:   -0px  -96px;}
+… (f64-f95) …
+
+.dragon-f96 {background-position:   -0px -144px;}
+… (f96-f127) …
+
+.dragon-f128{background-position:   -0px -192px;}
+… (f128-f159) …
