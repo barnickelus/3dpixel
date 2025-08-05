@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Genesis Evolution — Star-Frenzy (Sprite-Head Build)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+
+<!--  -----  GLOBAL STYLES  -----  -->
+<style>
+/* ------------- GENESIS HUD & LAYOUT ------------- */
+html,body{margin:0;height:100%;background:#060616;overflow:hidden;font-family:"Inter",Arial,sans-serif;color:#fff}
+canvas{width:100%;height:100%;display:block;touch-action:none;background:#000}
+
+/* ------------- DRAGON HEAD SPRITE --------------- */
+:root{
+  --tile:48px;                       /* sprite native tile           */
+  --cols:32;                         /* yaw frames                   */
+  --rows:5;                          /* pitch frames                 */
+  --zoom:4;                          /* game-world scale multiplier  */
+  --sheet:url("dragon_sprite_160f_48px.png");
+}
+#dragonHead{
+  width:calc(var(--tile)*var(--zoom));
+  height:calc(var(--tile)*var(--zoom));
+  background-image:var(--sheet);
+  background-repeat:no-repeat;
+  background-size:calc(var(--tile)*var(--cols)*var(--zoom))
+                  calc(var(--tile)*var(--rows)*var(--zoom));
+  image-rendering:pixelated;
+  position:absolute;                 /* will be positioned each frame */
+  pointer-events:none;
+  transform-origin:center;
+}
+</style>
+</head>
+<body>
+
+<!-- main WebGL canvas (game world) -->
+<canvas id="game"></canvas>
+
+<!-- dragon sprite overlay -->
+<div id="dragonHead"></div>
+
+<script>
+// ================================================================
+//  LIGHTWEIGHT STAR-FRENZY CORE (same mechanics as your June build)
+// ================================================================
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');          // placeholder 2-D background
+// (core world vars still handled in your main JS modules)
+
+// --------------- DRAGON HEAD SPRITE CONTROLLER ------------------
+const head = document.getElementById('dragonHead');
+const COLS = 32, ROWS = 5, TILE = 48, ZOOM = parseInt(getComputedStyle(document.documentElement).getPropertyValue('--zoom'));
+
+// naive player state for demo purposes
+let player = {
+  x: innerWidth/2, y: innerHeight/2,
+  yaw: 0,          // 0-31
+  pitch: 2,        // 0-4
+  speed: 3
+};
+
+// keys → yaw/pitch
+const keys = {};
+addEventListener('keydown', e=>keys[e.key]=true);
+addEventListener('keyup',   e=>keys[e.key]=false);
+
+// ------------- MAIN LOOP (placeholder game loop) ---------------
+function loop(){
+  requestAnimationFrame(loop);
+
+  // --- update player yaw/pitch based on keys
+  if(keys['ArrowRight']) player.yaw = (player.yaw+1)%COLS;
+  if(keys['ArrowLeft' ]) player.yaw = (player.yaw-1+COLS)%COLS;
+  if(keys['ArrowUp'   ]) player.pitch = Math.max(0,player.pitch-1);
+  if(keys['ArrowDown' ]) player.pitch = Math.min(ROWS-1,player.pitch+1);
+
+  // ----- draw simple star-field background (placeholder)
+  ctx.fillStyle='#0008'; ctx.fillRect(0,0,canvas.width,canvas.height);
+  ctx.fillStyle='#0ff';  ctx.beginPath();
+  for(let i=0;i<30;i++){const x=Math.random()*canvas.width,y=Math.random()*canvas.height;ctx.rect(x,y,1,1);} ctx.fill();
+
+  // ----- position + animate sprite
+  const idx = player.pitch*COLS + player.yaw;
+  const xOff = - (player.yaw   * TILE * ZOOM);
+  const yOff = - (player.pitch * TILE * ZOOM);
+  head.style.backgroundPosition = `${xOff}px ${yOff}px`;
+  head.style.left = (player.x - (TILE*ZOOM)/2) + 'px';
+  head.style.top  = (player.y - (TILE*ZOOM)/2) + 'px';
+}
+loop();
+
+// ------------- HANDLE RESIZE -----------------------------------
+addEventListener('resize', ()=>{canvas.width=innerWidth;canvas.height=innerHeight});
+dispatchEvent(new Event('resize'));  // init size
+</script>
+</body>
+</html>
