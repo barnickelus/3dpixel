@@ -18,13 +18,13 @@
     #radarWrap{top:48px;right:18px;width:70px;height:70px;display:none;}
     #radar{width:70px;height:70px;border:1px solid #555;border-radius:4px;background:rgba(0,0,0,.4);}
     #zoomSlider{top:130px;right:18px;width:70px;transform:rotate(-90deg);}
-    :root{
-      --tile:48px;
-      --cols:32;
-      --rows:5;
-      --scale:4;
-      --sheet:url('dragon_sprite_160f_48px.png');
-    }
+:root{
+  --tile : 96px;               /* each frame = 96 × 96 px */
+  --cols : 32;
+  --rows : 5;
+  --scale: 2;                  /* keeps on-screen size unchanged */
+  --sheet: url("dragon_head_sheet_detail.png");
+}
     #dragonHead{
       position:absolute;pointer-events:none;
       width:calc(var(--tile)*var(--scale));
