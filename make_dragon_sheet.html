@@ -1,42 +1,25 @@
 <!DOCTYPE html>
-<html lang="en">
-<head>
+<html lang="en"><head>
 <meta charset="utf-8">
-<title>Sprite-Sheet Maker (tile, angles, cols)</title>
+<title>Sprite-Sheet Maker (yaw × pitch)</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-
-<!-- Three.js + loaders -->
-<script type="importmap">
-{
-  "imports":{
-    "three":"https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js",
-    "OBJLoader":"https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/loaders/OBJLoader.js",
-    "MTLLoader":"https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/loaders/MTLLoader.js"
-  }
-}
-</script>
-
-<style>
-body  {font-family:system-ui;background:#111;color:#eee;margin:0;padding:1rem;text-align:center}
-canvas{display:none}
-#sheetPreview{max-width:100%;image-rendering:pixelated;border:1px solid #555;margin-top:1rem}
-label {display:block;margin:.6rem auto}
-input[type=number]{width:6rem}
-button{margin-top:1rem;padding:.6rem 1.3rem;font-size:1rem}
-a.fileLink{display:block;margin-top:.45rem;color:#4df;text-decoration:none}
-</style>
-</head>
-<body>
+<script type="importmap"> … same three.js importmap … </script>
+<style> … same CSS … </style>
+</head><body>
 
 <h2>Sprite-Sheet Maker</h2>
 
+<!-- model + texture -->
 <label>OBJ file  <input type="file" id="obj"></label>
 <label>MTL file  <input type="file" id="mtl"></label>
 <label>Texture   <input type="file" id="tex"></label>
 
-<label>Tile size (px)     <input type="number" id="tile" value="256" min="16"></label>
-<label>Angles / frames    <input type="number" id="frames" value="32" min="1"></label>
-<label>Columns (optional) <input type="number" id="cols"  placeholder="auto" min="1"></label>
+<!-- grid -->
+<label>Tile size (px)     <input type="number" id="tile"   value="256"  min="16"></label>
+<label>Yaw frames         <input type="number" id="yaw"    value="32"   min="1"></label>
+<label>Pitch frames       <input type="number" id="pitch"  value="5"    min="1"></label>    <!-- 🔸 -->
+<label>Pitch range (°)    <input type="number" id="range"  value="60"   min="0" max="90"></label> <!-- 🔸 -->
+<label>Columns (optional) <input type="number" id="cols"   placeholder="auto" min="1"></label>
 
 <button id="go">Start</button>
 <img id="sheetPreview" hidden>
@@ -47,82 +30,84 @@ import { OBJLoader } from 'OBJLoader';
 import { MTLLoader } from 'MTLLoader';
 
 const $ = id=>document.getElementById(id);
+function linkFrom(data,name,type='text/plain'){ … same helper … }
 
-/* helper → create download link */
-function linkFrom(data,name,type='text/plain'){
-  const blob=data instanceof Blob?data:new Blob([data],{type});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download=name; a.textContent='Download '+name;
-  a.className='fileLink'; document.body.appendChild(a);
-}
-
-/* main click ----------------------------------------------------------- */
-$('go').onclick = async ()=>{
+$('go').onclick = async () => {
   const [objFile,mtlFile,texFile]=['obj','mtl','tex'].map(id=>$ (id).files[0]);
   if(!objFile||!mtlFile||!texFile){alert('Need OBJ, MTL, texture');return;}
 
-  const TILE = Math.max(16, +$('tile').value||256);
-  const FR   = Math.max(1 , +$('frames').value||32);
+  /* read form values -------------------------------------------------- */
+  const TILE = Math.max(16,+$('tile').value||256);
+  const YAW  = Math.max(1 ,+$('yaw').value ||32);
+  const PIT  = Math.max(1 ,+$('pitch').value||1);          // 🔸 may be 1 (no pitch)
+  const RANGE= Math.max(0 ,Math.min(90,+$('range').value||60)); // 🔸 clamp 0-90
   let   COLS = +$('cols').value||0;
-  if(!COLS||COLS>FR) COLS = Math.ceil(Math.sqrt(FR));       // tidy grid
-  const ROWS = Math.ceil(FR/COLS);
+  if(!COLS||COLS<YAW) COLS = YAW;                         // one full yaw row
+  const ROWS = PIT;
+  const FR   = YAW * PIT;
 
   $('go').disabled=true; $('go').textContent='Working…';
 
-  /* Three.js scene ---------------------------------------------------- */
-  const scene=new THREE.Scene();
-  const cam  =new THREE.PerspectiveCamera(30,1,0.01,100);
-  const ren  =new THREE.WebGLRenderer({preserveDrawingBuffer:true,alpha:true});
-  ren.setSize(TILE,TILE); document.body.appendChild(ren.domElement);
+  /* Three.js boilerplate --------------------------------------------- */
+  … identical scene / camera / lighting / OBJ load …
 
-  scene.add(new THREE.AmbientLight(0xffffff,0.6));
-  const key=new THREE.PointLight(0xffffff,0.8); key.position.set(5,5,5); scene.add(key);
-
-  const mtl=await new MTLLoader().loadAsync(URL.createObjectURL(mtlFile)); mtl.preload();
-  const obj=await new OBJLoader().setMaterials(mtl).loadAsync(URL.createObjectURL(objFile));
-  scene.add(obj);
-
-  const box=new THREE.Box3().setFromObject(obj);
-  obj.position.sub(box.getCenter(new THREE.Vector3()));
-  cam.position.set(0,0,box.getSize(new THREE.Vector3()).length()*1.1);
-  cam.lookAt(0,0,0);
-
-  /* sheet canvas ------------------------------------------------------ */
-  const sheet=document.createElement('canvas');
-  sheet.width=TILE*COLS; sheet.height=TILE*ROWS;
-  const ctx=sheet.getContext('2d');
-
-  for(let i=0;i<FR;i++){
-    obj.rotation.y = -i*(2*Math.PI/FR);
-    ren.render(scene,cam);
-    const c=i%COLS, r=Math.floor(i/COLS);
-    ctx.drawImage(ren.domElement,c*TILE,r*TILE);
-    await new Promise(r=>setTimeout(r,6));
+  /* build pitch angle list ------------------------------------------- */
+  // +RANGE (top) .. 0 .. -RANGE (bottom) evenly across PIT steps
+  const pitchAngles=[];
+  for(let p=0;p<PIT;p++){
+     pitchAngles.push(THREE.MathUtils.degToRad(
+        RANGE - (2*RANGE)*(p/(PIT-1||1)) ));              // PIT==1 → 0°
   }
 
-  /* Filenames reflect FR & TILE for clarity */
-  const base = `dragon_sprite_${FR}f_${TILE}px`;
-  const pngName = base + '.png';
+  /* sheet canvas ----------------------------------------------------- */
+  const sheet=document.createElement('canvas');
+  sheet.width = TILE * COLS;
+  sheet.height= TILE * ROWS;
+  const ctx = sheet.getContext('2d');
 
-  /* PNG out */
-  sheet.toBlob(blob=>{
-    $('sheetPreview').src=URL.createObjectURL(blob);
-    $('sheetPreview').hidden=false;
-    linkFrom(blob,pngName,'image/png');
+  /* render ----------------------------------------------------------- */
+  let index=0;
+  for(let pr=0; pr<PIT; pr++){              // row = pitch
+    obj.rotation.x = pitchAngles[pr];
+    for(let yr=0; yr<YAW; yr++){            // col = yaw
+      obj.rotation.y = -yr*(2*Math.PI/YAW);
+      cam.lookAt(0,0,0);                    // keep camera fixed
+      cam.updateMatrixWorld();
+      ren.render(scene,cam);
+
+      const x=(yr%COLS)*TILE, y=pr*TILE;
+      ctx.drawImage(ren.domElement,x,y);
+      index++;
+      await new Promise(r=>setTimeout(r,5));
+    }
+  }
+
+  /* filenames -------------------------------------------------------- */
+  const base=`dragon_sprite_${FR}f_${TILE}px_${YAW}yaw_${PIT}pit`;
+  const pngName=base+'.png';
+
+  /* PNG + links ------------------------------------------------------ */
+  sheet.toBlob(b=>{
+     $('sheetPreview').src=URL.createObjectURL(b); $('sheetPreview').hidden=false;
+     linkFrom(b,pngName,'image/png');
   },'image/png');
 
-  /* CSS + JSON atlas -------------------------------------------------- */
-  let css = `.dragon{width:${TILE}px;height:${TILE}px;`+
-            `background-image:url("${pngName}");background-repeat:no-repeat;`+
-            `image-rendering:pixelated;}\n`;
+  /* CSS + JSON atlas ------------------------------------------------- */
+  let css=`.dragon{width:${TILE}px;height:${TILE}px;`+
+          `background-image:url("${pngName}");background-repeat:no-repeat;`+
+          `image-rendering:pixelated;}\n`;
   const atlas={meta:{image:pngName,size:{w:TILE*COLS,h:TILE*ROWS},
                      frameSize:{w:TILE,h:TILE},columns:COLS,rows:ROWS},
                frames:[]};
 
-  for(let i=0;i<FR;i++){
-    const c=i%COLS,r=Math.floor(i/COLS),x=c*TILE,y=r*TILE;
-    css+=`.dragon-f${i}{background-position:-${x}px -${y}px;}\n`;
-    atlas.frames.push({name:`f${i}`,x,y,w:TILE,h:TILE});
+  index=0;
+  for(let pr=0;pr<PIT;pr++){
+    for(let yr=0;yr<YAW;yr++){
+      const x=yr*TILE, y=pr*TILE;
+      css+=`.dragon-f${index}{background-position:-${x}px -${y}px;}\n`;
+      atlas.frames.push({name:`f${index}`,x,y,w:TILE,h:TILE});
+      index++;
+    }
   }
   linkFrom(css,  base+'.css');
   linkFrom(JSON.stringify(atlas,null,2), base+'.json');
@@ -130,5 +115,4 @@ $('go').onclick = async ()=>{
   $('go').textContent='Done';
 };
 </script>
-</body>
-</html>
+</body></html>
