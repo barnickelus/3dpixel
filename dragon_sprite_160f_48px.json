@@ -1,0 +1,16 @@
+{
+  "meta": {
+    "image": "dragon_sprite_160f_48px.png",
+    "size": { "w": 1536, "h": 240 },
+    "frameSize": { "w": 48, "h": 48 },
+    "columns": 32,
+    "rows": 5
+  },
+  "frames": [
+    { "name": "f0",   "x":    0, "y": 192, "w": 48, "h": 48 },
+    { "name": "f1",   "x":   48, "y": 192, "w": 48, "h": 48 },
+    { "name": "f2",   "x":   96, "y": 192, "w": 48, "h": 48 },
+    …  (one entry per frame, up to f159)  …
+    { "name": "f159", "x": 1488, "y":   0, "w": 48, "h": 48 }
+  ]
+}
