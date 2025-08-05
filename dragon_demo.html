@@ -2,57 +2,88 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Dragon Head — 160-frame Sprite Demo</title>
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<link rel="stylesheet" href="dragon_sprite_160f_48px.css">
-
+<title>Dragon 160-frame Demo (iPad)</title>
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <style>
-body{
-  margin:0; height:100vh; display:flex; justify-content:center; align-items:center;
-  background:#202024; color:#eee; font-family:system-ui, sans-serif; flex-direction:column;
+:root{
+  --tile:48px;                     /* frame size (match sheet)       */
+  --cols:32;                       /* yaw steps                      */
+  --rows:5;                        /* pitch steps                    */
+  --sheet: url("dragon_sprite_160f_48px.png");
 }
-#info{margin-top:1rem;font-size:.9rem;opacity:.8}
+html,body{height:100%;margin:0;background:#202024;display:flex;flex-direction:column;align-items:center;justify-content:center;font-family:system-ui;color:#eee;-webkit-user-select:none;user-select:none}
+#sprite{width:var(--tile);height:var(--tile);background-image:var(--sheet);image-rendering:pixelated;background-repeat:no-repeat}
+#controls{display:flex;flex-wrap:wrap;gap:.6rem;margin-top:1.3rem}
+button{font-size:1.3rem;padding:.5rem .8rem;border:none;border-radius:6px;background:#444;color:#fff}
+button:active{background:#666}
 </style>
 </head>
 <body>
 
-<div id="sprite" class="dragon dragon-f64"></div> <!-- start: yaw 0°, pitch 0° (row 2) -->
-<div id="info">←/→ rotate ↑/↓ tilt (space) auto-spin</div>
+<div id="sprite"></div>
+
+<div id="controls">
+  <button id="up">▲</button>
+  <button id="left">◀︎</button>
+  <button id="play">⏯︎</button>
+  <button id="right">▶︎</button>
+  <button id="down">▼</button>
+</div>
 
 <script>
-/* grid description (match sheet) */
-const TILE = 48, YAW = 32, PITCH = 5;
-
-/* state */
-let yaw = 0, pitch = 2;         // start facing forward, level
-let auto = true;                // auto-spin flag
+/* grid config – keep in sync with CSS vars */
+const COLS = 32;           // yaw steps
+const ROWS = 5;            // pitch steps
 const sprite = document.getElementById('sprite');
 
-function applyFrame(){
-  const idx = pitch * YAW + yaw;
-  sprite.className = `dragon dragon-f${idx}`;
+/* state */
+let yaw = 0;               // 0 … 31
+let pitch = 2;             // 0 (top) … 4 (bottom)
+let auto = true;
+
+/* helpers */
+function setOffset(){
+  /* BG-pos uses CSS pixels (col * –tile, row * –tile) */
+  const x = -yaw   * 48;   // 48 = tile px
+  const y = -pitch * 48;
+  sprite.style.backgroundPosition = `${x}px ${y}px`;
 }
-applyFrame();
+setOffset();
 
-/* keyboard controls */
-window.addEventListener('keydown', e=>{
-  switch(e.key){
-    case 'ArrowRight': yaw = (yaw + 1) % YAW; auto = false; break;
-    case 'ArrowLeft' : yaw = (yaw - 1 + YAW) % YAW; auto = false; break;
-    case 'ArrowUp'   : pitch = Math.max(0, pitch - 1); auto = false; break;
-    case 'ArrowDown' : pitch = Math.min(PITCH - 1, pitch + 1); auto = false; break;
-    case ' ': auto = !auto; break;             // toggle auto-spin
-  }
-  applyFrame();
-});
-
-/* simple auto-spin loop */
-setInterval(()=>{
+/* autorotate loop */
+function tick(){
   if(auto){
-    yaw = (yaw + 1) % YAW;
-    applyFrame();
+    yaw = (yaw + 1) % COLS;
+    setOffset();
   }
-}, 120);  // speed in ms
+  requestAnimationFrame(tick);
+}
+tick();
+
+/* button handlers */
+const clamp = (val,min,max)=>Math.max(min,Math.min(max,val));
+document.getElementById('left' ).onclick = ()=>{auto=false; yaw = (yaw-1+COLS)%COLS; setOffset();};
+document.getElementById('right').onclick = ()=>{auto=false; yaw = (yaw+1)%COLS;     setOffset();};
+document.getElementById('up'   ).onclick = ()=>{auto=false; pitch = clamp(pitch-1,0,ROWS-1); setOffset();};
+document.getElementById('down' ).onclick = ()=>{auto=false; pitch = clamp(pitch+1,0,ROWS-1); setOffset();};
+document.getElementById('play' ).onclick = ()=>{auto=!auto;};
+
+/* swipe gesture (touch & mouse drag) */
+let startX,startY;
+sprite.addEventListener('pointerdown',e=>{
+  startX=e.clientX; startY=e.clientY;
+  sprite.setPointerCapture(e.pointerId);
+});
+sprite.addEventListener('pointerup',e=>{
+  const dx=e.clientX-startX, dy=e.clientY-startY;
+  if(Math.abs(dx)>Math.abs(dy)){
+    if(dx>10) document.getElementById('right').click();
+    if(dx<-10)document.getElementById('left').click();
+  }else{
+    if(dy>10) document.getElementById('down').click();
+    if(dy<-10)document.getElementById('up').click();
+  }
+});
 </script>
 </body>
 </html>
