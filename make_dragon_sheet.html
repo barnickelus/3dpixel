@@ -2,113 +2,84 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Dragon Sprite-Sheet Maker (Three.js)</title>
+<title>Dragon Head Sprite Sheet – 32 frames</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
-
-<!-- Three.js core + OBJ / MTL loaders (ESM) -->
-<script type="importmap">
-{
-  "imports":{
-    "three":"https://cdn.jsdelivr.net/npm/three@0.159/build/three.module.js",
-    "OBJLoader":"https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/loaders/OBJLoader.js",
-    "MTLLoader":"https://cdn.jsdelivr.net/npm/three@0.159/examples/jsm/loaders/MTLLoader.js"
-  }
-}
-</script>
-
 <style>
-body{font-family:system-ui;background:#111;color:#eee;margin:0;padding:1rem;text-align:center}
-canvas{display:none} /* off-screen render canvas */
-#sheetPreview{max-width:100%;image-rendering:pixelated;border:1px solid #555;margin-top:1rem}
-label{display:block;margin:.7rem auto}
-button{margin-top:1rem;padding:.6rem 1.2rem;font-size:1rem}
+/* ------------ CONFIG ------------- */
+:root{
+  --tile: 256px;                /* width & height of one frame  */
+  --cols: 8;                    /* columns in the sheet         */
+  --rows: 4;                    /* rows in the sheet            */
+  --sheet: url("dragon_head_sprite_32x256.png");
+}
+/* ------------ BASE --------------- */
+body{
+  font-family: system-ui, sans-serif;
+  margin:0; padding:2rem; background:#111; color:#eee; text-align:center;
+}
+.dragon{
+  width:var(--tile); height:var(--tile);
+  background-image:var(--sheet);
+  background-repeat:no-repeat;
+  image-rendering:pixelated;       /* keep it crisp */
+}
+
+/* ------------ FRAME CLASSES ------ */
+/* row offsets are pre-flipped (row 3 at top, row 0 at bottom) */
+.dragon-f0  {background-position:    0px -768px;}
+.dragon-f1  {background-position: -256px -768px;}
+.dragon-f2  {background-position: -512px -768px;}
+.dragon-f3  {background-position: -768px -768px;}
+.dragon-f4  {background-position:-1024px -768px;}
+.dragon-f5  {background-position:-1280px -768px;}
+.dragon-f6  {background-position:-1536px -768px;}
+.dragon-f7  {background-position:-1792px -768px;}
+
+.dragon-f8  {background-position:    0px -512px;}
+.dragon-f9  {background-position: -256px -512px;}
+.dragon-f10 {background-position: -512px -512px;}
+.dragon-f11 {background-position: -768px -512px;}
+.dragon-f12 {background-position:-1024px -512px;}
+.dragon-f13 {background-position:-1280px -512px;}
+.dragon-f14 {background-position:-1536px -512px;}
+.dragon-f15 {background-position:-1792px -512px;}
+
+.dragon-f16 {background-position:    0px -256px;}
+.dragon-f17 {background-position: -256px -256px;}
+.dragon-f18 {background-position: -512px -256px;}
+.dragon-f19 {background-position: -768px -256px;}
+.dragon-f20 {background-position:-1024px -256px;}
+.dragon-f21 {background-position:-1280px -256px;}
+.dragon-f22 {background-position:-1536px -256px;}
+.dragon-f23 {background-position:-1792px -256px;}
+
+.dragon-f24 {background-position:    0px    0px;}
+.dragon-f25 {background-position: -256px    0px;}
+.dragon-f26 {background-position: -512px    0px;}
+.dragon-f27 {background-position: -768px    0px;}
+.dragon-f28 {background-position:-1024px    0px;}
+.dragon-f29 {background-position:-1280px    0px;}
+.dragon-f30 {background-position:-1536px    0px;}
+.dragon-f31 {background-position:-1792px    0px;}
+
+/* ------------ DEMO ANIMATION ----- */
+@keyframes spin32{
+  from{background-position:    0px -768px;}
+  to  {background-position:-1792px    0px;}
+}
+.demo-spin{
+  animation:spin32 1s steps(32) infinite;
+}
 </style>
 </head>
 <body>
 
-<h2>Dragon Sprite-Sheet Maker</h2>
+<h1>Dragon Head Sprite Sheet (32 frames)</h1>
+<p>Below: the sprite animating via CSS <code>steps(32)</code>.  
+Copy the CSS above into your own project and switch the frame classes however you like.</p>
 
-<label>OBJ file <input type="file" id="obj"></label>
-<label>MTL file <input type="file" id="mtl"></label>
-<label>Texture (JPEG/PNG) <input type="file" id="tex"></label>
-<button id="go">Start</button>
-<br>
-<img id="sheetPreview" hidden>
+<!-- live demo -->
+<div class="dragon demo-spin"></div>
 
-<script type="module">
-import * as THREE from 'three';
-import { OBJLoader } from 'OBJLoader';
-import { MTLLoader } from 'MTLLoader';
-
-const SIZE = 256, COLS = 8, ROWS = 4, FRAMES = COLS*ROWS;
-const btn     = document.getElementById('go');
-const preview = document.getElementById('sheetPreview');
-
-btn.onclick = async () => {
-  btn.disabled = true; btn.textContent = 'Working…';
-
-  /* --- 1. read local files into blobs/URLs --- */
-  const objFile = document.getElementById('obj').files[0];
-  const mtlFile = document.getElementById('mtl').files[0];
-  const texFile = document.getElementById('tex').files[0];
-  if(!objFile||!mtlFile||!texFile){ alert('Choose all three files'); btn.disabled=false; return; }
-
-  const objURL = URL.createObjectURL(objFile);
-  const mtlURL = URL.createObjectURL(mtlFile);
-  const texURL = URL.createObjectURL(texFile);
-
-  /* --- 2. set up scene --- */
-  const scene = new THREE.Scene();
-  const cam   = new THREE.PerspectiveCamera(30,1,0.01,100);
-  const renderer = new THREE.WebGLRenderer({preserveDrawingBuffer:true,alpha:true});
-  renderer.setSize(SIZE,SIZE);
-  document.body.appendChild(renderer.domElement); // off-screen but needed
-
-  /* lighting */
-  scene.add(new THREE.AmbientLight(0xffffff,0.6));
-  const key = new THREE.PointLight(0xffffff,0.8); key.position.set(5,5,5); scene.add(key);
-
-  /* load material & obj */
-  const mtl = await new MTLLoader().loadAsync(mtlURL);
-  mtl.preload();
-  const obj = await new OBJLoader().setMaterials(mtl).loadAsync(objURL);
-  scene.add(obj);
-
-  /* centre + scale */
-  const box = new THREE.Box3().setFromObject(obj);
-  const size = box.getSize(new THREE.Vector3()).length();
-  const centre = box.getCenter(new THREE.Vector3());
-  obj.position.sub(centre);                              // centre
-  cam.position.set(0,0,size*1.1); cam.lookAt(0,0,0);     // tight crop
-
-  /* canvases for frames and sprite sheet */
-  const sheet = document.createElement('canvas');
-  sheet.width = SIZE*COLS; sheet.height = SIZE*ROWS;
-  const shCtx = sheet.getContext('2d');
-
-  /* --- 3. render each angle --- */
-  for(let i=0;i<FRAMES;i++){
-    obj.rotation.y = -i*(2*Math.PI/FRAMES);
-    renderer.render(scene,cam);
-
-    const col=i%COLS, row=ROWS-1-Math.floor(i/COLS);
-    shCtx.drawImage(renderer.domElement, col*SIZE, row*SIZE);
-    await new Promise(r=>setTimeout(r,10)); // yield → keeps UI responsive
-  }
-
-  /* --- 4. make downloadable PNG --- */
-  sheet.toBlob(blob=>{
-    const url = URL.createObjectURL(blob);
-    preview.src=url; preview.hidden=false;
-
-    const a = document.createElement('a');
-    a.href = url; a.download = 'dragon_head_sprite_32x256.png';
-    a.textContent = 'Download PNG';
-    document.body.appendChild(a);
-  });
-
-  btn.textContent = 'Done';
-};
-</script>
 </body>
 </html>
