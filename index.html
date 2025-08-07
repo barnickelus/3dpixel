@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Genesis Evolution — Star-Frenzy</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: black;
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="gameCanvas"></canvas>
+
+  <script>
+    // Paste all 4 JavaScript parts here in order
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+let score = 0;
+let gameOver = false;
+
+// Starfield background
+const stars = [];
+for (let i = 0; i < 200; i++) {
+  stars.push({
+    x: Math.random() * canvas.width,
+    y: Math.random() * canvas.height,
+    speed: Math.random() * 0.5 + 0.2,
+    size: Math.random() * 2
+  });
+}
+
+function drawStars() {
+  ctx.fillStyle = "black";
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = "white";
+  stars.forEach(star => {
+    ctx.beginPath();
+    ctx.arc(star.x, star.y, star.size, 0, Math.PI * 2);
+    ctx.fill();
+    star.y += star.speed;
+    if (star.y > canvas.height) {
+      star.y = 0;
+      star.x = Math.random() * canvas.width;
+    }
+  });
+}
+const player = {
+  x: canvas.width / 2,
+  y: canvas.height - 60,
+  width: 40,
+  height: 40,
+  speed: 7,
+  color: "cyan"
+};
+
+function drawPlayer() {
+  ctx.fillStyle = player.color;
+  ctx.fillRect(player.x, player.y, player.width, player.height);
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowLeft" && player.x > 0) {
+    player.x -= player.speed;
+  } else if (e.key === "ArrowRight" && player.x + player.width < canvas.width) {
+    player.x += player.speed;
+  }
+});
+const enemies = [];
+
+function spawnEnemy() {
+  const size = 30;
+  enemies.push({
+    x: Math.random() * (canvas.width - size),
+    y: -size,
+    width: size,
+    height: size,
+    speed: Math.random() * 2 + 1,
+    color: "red"
+  });
+}
+
+function drawEnemies() {
+  enemies.forEach(enemy => {
+    ctx.fillStyle = enemy.color;
+    ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+    enemy.y += enemy.speed;
+
+    // Collision detection
+    if (
+      enemy.x < player.x + player.width &&
+      enemy.x + enemy.width > player.x &&
+      enemy.y < player.y + player.height &&
+      enemy.y + enemy.height > player.y
+    ) {
+      gameOver = true;
+    }
+
+    // Score update
+    if (enemy.y > canvas.height) {
+      score++;
+      enemies.splice(enemies.indexOf(enemy), 1);
+    }
+  });
+}
+function drawScore() {
+  ctx.fillStyle = "white";
+  ctx.font = "20px Arial";
+  ctx.fillText("Score: " + score, 20, 30);
+}
+
+function drawGameOver() {
+  ctx.fillStyle = "white";
+  ctx.font = "40px Arial";
+  ctx.fillText("Game Over", canvas.width / 2 - 100, canvas.height / 2);
+  ctx.font = "20px Arial";
+  ctx.fillText("Press R to Restart", canvas.width / 2 - 80, canvas.height / 2 + 40);
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "r" && gameOver) {
+    score = 0;
+    enemies.length = 0;
+    gameOver = false;
+  }
+});
+
+function gameLoop() {
+  drawStars();
+  drawPlayer();
+  drawEnemies();
+  drawScore();
+
+  if (gameOver) {
+    drawGameOver();
+  } else {
+    if (Math.random() < 0.02) spawnEnemy();
+    requestAnimationFrame(gameLoop);
+  }
+}
+
+gameLoop();
+
+  </script>
+</body>
+</html>
