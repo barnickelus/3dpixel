@@ -200,6 +200,34 @@
     const TILE = window.TILE;
     const SCALE = window.SCALE;
 
+/* load the GLB */
+let headMesh = null;
+new GLTFLoader().load(
+  'dragon-head.glb',                       // ← make sure this path is correct
+  gltf => {
+    headMesh = gltf.scene;
+
+    /* ---------- normalise size & centre ---------------- */
+    const box   = new THREE.Box3().setFromObject(headMesh);
+    const size  = box.getSize(new THREE.Vector3()).length();   // diagonal
+    const scale = 2 / size;                                    // fits ~2-unit cube
+    headMesh.scale.setScalar(scale);
+
+    box.setFromObject(headMesh);                               // recompute after scale
+    const centre = box.getCenter(new THREE.Vector3()).negate();
+    headMesh.position.copy(centre);                            // move to (0,0,0)
+
+    headMesh.rotation.order = 'YXZ';                           // yaw then pitch
+    scene.add(headMesh);
+
+    console.log('%c✔ 3-D head loaded & centred', 'color:#0f0');
+  },
+  undefined,
+  err => console.error('GLTF load error:', err)
+);
+
+/* tiny ambient so we can still see the model in the dark */
+scene.add(new THREE.AmbientLight(0xffffff, 0.3));
     /* renderer + scene */
     const canvas = document.getElementById("headCanvas");
     const renderer = new THREE.WebGLRenderer({
