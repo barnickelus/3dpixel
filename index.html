@@ -17,7 +17,7 @@
       display: block; touch-action: none;
       background: #000;
     }
-    /* head wrapper & canvas */
+    /* head wrapper & its canvas */
     #dragonHead {
       position: absolute;
       pointer-events: none;
@@ -70,21 +70,20 @@
     }
     #zoomSlider {
       top:130px; right:18px;
-      width:70px;
-      transform:rotate(-90deg);
+      width:70px; transform:rotate(-90deg);
     }
   </style>
 </head>
 <body>
-  <!-- GAME CANVAS -->
+  <!-- 1) Game canvas -->
   <canvas id="game"></canvas>
 
-  <!-- DRAGON HEAD (Unicorn Studio) -->
+  <!-- 2) Dragon head wrapper & canvas -->
   <div id="dragonHead">
     <canvas id="headCanvas"></canvas>
   </div>
 
-  <!-- HUD -->
+  <!-- 3) HUD -->
   <div id="hud">
     Mass: <span id="mass">10</span>&nbsp;
     Score: <span id="score">0</span>&nbsp;
@@ -93,61 +92,74 @@
   <div id="compass">N<br>E&nbsp;&nbsp;W<br>&nbsp;S</div>
   <div id="effBar"><div id="effFill"></div></div>
   <div id="pauseBtn">⏸︎</div>
-  <div id="radarWrap"><canvas id="radar" width="70" height="70"></canvas></div>
+  <div id="radarWrap">
+    <canvas id="radar" width="70" height="70"></canvas>
+  </div>
   <input id="zoomSlider" type="range" min="0.5" max="2" step="0.01" value="1">
 
-  <!-- AUDIO -->
+  <!-- 4) Audio -->
   <audio id="backgroundMusic" src="background-music.mp3" loop preload="auto"></audio>
   <audio id="eatSnd"         src="eat.mp3"    preload="auto"></audio>
   <audio id="hurtSnd"        src="hurt.mp3"   preload="auto"></audio>
   <audio id="frenzySnd"      src="frenzy.mp3" preload="auto"></audio>
 
-  <!-- 1) Unicorn Studio UMD bundle -->
-  <script src="https://cdn.jsdelivr.net/gh/hiunicornstudio/unicornstudio.js@v1.4.29/dist/unicornStudio.umd.js"></script>
-  <script>
-    // — HEAD INTEGRATION —
-    const TILE = 48, COLS = 32, ROWS = 5, SCALE = 4;
+  <!-- 5) Three.js + GLTFLoader module to render your .glb head -->
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.153.0/build/three.module.js';
+    import { GLTFLoader } from 'https://cdn.jsdelivr.net/npm/three@0.153.0/examples/jsm/loaders/GLTFLoader.js';
+
+    const TILE = 48, SCALE = 4;
     const headCanvas = document.getElementById('headCanvas');
-    let headInstance = null;
 
-    UnicornStudio.init()
-      .then(() => UnicornStudio.load('d5nqHg9UTOiV7hBzdpCE', {
-        canvas: headCanvas,
-        width: TILE * SCALE,
-        height: TILE * SCALE,
-        autoRender: false
-      }))
-      .then(inst => { headInstance = inst; });
+    // Renderer
+    const renderer = new THREE.WebGLRenderer({
+      canvas: headCanvas,
+      alpha: true,
+      antialias: true
+    });
+    renderer.setSize(TILE * SCALE, TILE * SCALE);
 
-    function updateHead(screenX, screenY, yawIdx, pitchIdx, zoom) {
-      const wrap = document.getElementById('dragonHead');
-      const size = TILE * SCALE * zoom;
+    // Scene & camera
+    const scene  = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(40, 1, 0.1, 100);
+    camera.position.set(0, 0, 5);
 
-      wrap.style.width  = size + 'px';
-      wrap.style.height = size + 'px';
-      wrap.style.left   = (screenX - size/2) + 'px';
-      wrap.style.top    = (screenY - size/2) + 'px';
+    // Light
+    const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    dirLight.position.set(1, 2, 3);
+    scene.add(dirLight);
 
-      headCanvas.style.width  = size + 'px';
-      headCanvas.style.height = size + 'px';
+    // Load GLB
+    let headMesh = null;
+    new GLTFLoader().load(
+      'dragon-head.glb',   // ← host your exported model here
+      gltf => {
+        headMesh = gltf.scene;
+        headMesh.rotation.order = 'YXZ';
+        scene.add(headMesh);
+      },
+      undefined,
+      err => console.error('GLTF load error:', err)
+    );
 
-      if (headInstance) {
-        headInstance.setYaw   ( (yawIdx   / COLS) * 2 * Math.PI );
-        headInstance.setPitch( ((pitchIdx / (ROWS-1)) - 0.5) * Math.PI );
-        headInstance.render();
-      }
-    }
+    // Expose a render function
+    window.renderHead = (yawRad, pitchRad) => {
+      if (!headMesh) return;
+      headMesh.rotation.y = yawRad;
+      headMesh.rotation.x = pitchRad;
+      renderer.render(scene, camera);
+    };
   </script>
 
-  <!-- 2) COMPLETE GAME LOGIC -->
+  <!-- 6) Full game logic, unchanged except updateHead -->
   <script>
-    // canvas & HUD refs
+    // Canvas & HUD refs
     const canvas = document.getElementById('game'),
           ctx    = canvas.getContext('2d',{alpha:false});
     ctx.imageSmoothingEnabled = false;
 
     let W, H;
-    function resize() {
+    function resize(){
       W = canvas.width  = innerWidth;
       H = canvas.height = innerHeight;
     }
@@ -161,7 +173,7 @@
           radarC   = document.getElementById('radar'),
           rctx     = radarC.getContext('2d');
 
-    // constants
+    // Constants
     const MASS_THRESH      = 600,
           TITAN_LEVEL      = 10,
           TITAN_MAX        = 6,
@@ -179,13 +191,13 @@
           SAFE_PLAYER_MASS = 70,
           BLINK_MS         = 300;
 
-    // zoom
+    // Zoom
     let sliderZoom = 1, zoom = 1;
     document.getElementById('zoomSlider').oninput = e => sliderZoom = parseFloat(e.target.value);
 
-    // helpers
+    // Helpers
     const rand = v => Math.random()*v - v/2;
-    const dist = (x1,y1,x2,y2) => Math.hypot(x2-x1, y2-y1);
+    const dist = (x1,y1,x2,y2) => Math.hypot(x2-x1,y2-y1);
     const lerp = (a,b,t) => a + (b-a)*t;
     const rgb  = h => ({
       r: parseInt(h.slice(1,3),16),
@@ -197,7 +209,7 @@
       return `rgb(${Math.round(lerp(A.r,B.r,t))},${Math.round(lerp(A.g,B.g,t))},${Math.round(lerp(A.b,B.b,t))})`;
     };
 
-    // world
+    // World state
     const food      = [],
           foes      = [],
           titans    = [],
@@ -205,73 +217,93 @@
           reapers   = [],
           beacons   = [],
           particles = [];
-    let player = { x:0,y:0,r:15,mass:10,tail:[],baseSpeed:2.5,blink:0,speedBoost:0,heading:0 },
-        target = { x:0,y:0,active:false },
-        offset = { x:0,y:0 },
-        pill   = { x:0,y:0,r:10,active:false,cd:0 },
-        frenzy = false,
-        F_TIME = 0,
-        paused = false,
-        radarActive = false,
-        titanTimer = 0,
-        titanKill  = 0,
-        spectreKill= 0,
-        level      = 1;
+    let player = {
+      x:0,y:0,r:15,mass:10,tail:[],
+      baseSpeed:2.5,blink:0,speedBoost:0,heading:0
+    },
+    target = {x:0,y:0,active:false},
+    offset = {x:0,y:0},
+    pill   = {x:0,y:0,r:10,active:false,cd:0},
+    frenzy = false, F_TIME=0,
+    paused = false, radarActive=false,
+    titanTimer=0, titanKill=0, spectreKill=0,
+    level=1;
 
-    // stars
+    // Star field
     const STARS = 120;
-    const stars = Array.from({length:STARS}, ()=>({
-      x: rand(4000), y: rand(4000), s: Math.random()*1.5 + 0.5
+    const stars = Array.from({length:STARS},()=>({
+      x: rand(4000), y: rand(4000),
+      s: Math.random()*1.5+0.5
     }));
 
-    // spawns
+    // Spawners
     const spawnFood = ()=>{ while(food.length<60) food.push({x:rand(1800),y:rand(1800),r:6}); };
-    const spawnFoe  = ()=>{ foes.push({x:rand(2000),y:rand(2000),r:(player.mass>=MASS_THRESH?14:10)+Math.random()*20}); };
+    const spawnFoe  = ()=>{ foes.push({
+      x:rand(2000), y:rand(2000),
+      r:(player.mass>=MASS_THRESH?14:10)+Math.random()*20
+    }); };
     const spawnTitan= ()=>{ const a=Math.random()*Math.PI*2, d=700+Math.random()*500;
-      titans.push({x:player.x+Math.cos(a)*d,y:player.y+Math.sin(a)*d,r:25+Math.random()*35,hop:0});
+      titans.push({
+        x:player.x+Math.cos(a)*d,
+        y:player.y+Math.sin(a)*d,
+        r:25+Math.random()*35,
+        hop:0
+      });
     };
     const spawnSpectre= ()=>{ const a=Math.random()*Math.PI*2, d=600+Math.random()*400;
-      spectres.push({x:player.x+Math.cos(a)*d,y:player.y+Math.sin(a)*d,r:22+Math.random()*25,dash:0});
+      spectres.push({
+        x:player.x+Math.cos(a)*d,
+        y:player.y+Math.sin(a)*d,
+        r:22+Math.random()*25,
+        dash:0
+      });
     };
     const spawnReaper = ()=>{ const a=Math.random()*Math.PI*2, d=800+Math.random()*600;
-      reapers.push({x:player.x+Math.cos(a)*d,y:player.y+Math.sin(a)*d,r:38+Math.random()*28,charge:0});
+      reapers.push({
+        x:player.x+Math.cos(a)*d,
+        y:player.y+Math.sin(a)*d,
+        r:38+Math.random()*28,
+        charge:0
+      });
     };
-    const spawnPill  = ()=>{ pill={x:rand(1800),y:rand(1800),r:10,active:true,cd:0}; };
+    const spawnPill = ()=>{ pill={x:rand(1800),y:rand(1800),r:10,active:true,cd:0}; };
 
-    // init world
+    // Init world
     spawnFood();
-    for(let i=0; i<12; i++) spawnFoe();
+    for(let i=0;i<12;i++) spawnFoe();
     ['N','S','E','W'].forEach(d=>{
-      const P={N:[0,-C_RING_DIST],S:[0,C_RING_DIST],E:[C_RING_DIST,0],W:[-C_RING_DIST,0]}[d];
+      const P={N:[0,-C_RING_DIST],S:[0,C_RING_DIST],
+               E:[C_RING_DIST,0],W:[-C_RING_DIST,0]}[d];
       beacons.push({x:P[0],y:P[1],r:18});
     });
 
-    // input
+    // Input
     function toWorld(e){
-      return { x:(e.clientX-offset.x)/zoom, y:(e.clientY-offset.y)/zoom };
+      return {x:(e.clientX-offset.x)/zoom,
+              y:(e.clientY-offset.y)/zoom};
     }
-    canvas.onpointerdown = e => {
+    canvas.onpointerdown = e=>{
       if(paused) return;
-      const p = toWorld(e);
-      target = { x:p.x, y:p.y, active:true };
+      const p=toWorld(e);
+      target={x:p.x,y:p.y,active:true};
     };
-    canvas.onpointermove = e => {
+    canvas.onpointermove = e=>{
       if(target.active && !paused){
-        const p = toWorld(e);
-        target.x = p.x; target.y = p.y;
+        const p=toWorld(e);
+        target.x=p.x; target.y=p.y;
       }
     };
-    canvas.onpointerup = ()=> target.active = false;
+    canvas.onpointerup = ()=> target.active=false;
 
-    // pause
+    // Pause
     pauseBtn.onclick = ()=>{
-      paused = !paused;
-      pauseBtn.textContent = paused ? '▶︎' : '⏸︎';
+      paused=!paused;
+      pauseBtn.textContent = paused?'▶︎':'⏸︎';
       const bg = document.getElementById('backgroundMusic');
-      if(bg) paused ? bg.pause() : bg.play().catch(()=>{});
+      if(bg) paused?bg.pause():bg.play().catch(()=>{});
     };
 
-    // draw helpers
+    // Draw helpers
     function onScreen(x,y,r){
       return !(
         x+r < player.x - W/(2*zoom) ||
@@ -281,27 +313,27 @@
       );
     }
     function glow(x,y,r,c,a){
-      if(r*zoom<0.8 || !onScreen(x,y,r)) return;
-      ctx.globalAlpha = a;
-      ctx.shadowBlur   = 12*zoom;
-      ctx.shadowColor  = c;
-      ctx.fillStyle    = c;
+      if(r*zoom<0.8||!onScreen(x,y,r)) return;
+      ctx.globalAlpha=a;
+      ctx.shadowBlur = 12*zoom;
+      ctx.shadowColor= c;
+      ctx.fillStyle  = c;
       ctx.beginPath();
       ctx.arc(x,y,r,0,Math.PI*2);
       ctx.fill();
-      ctx.shadowBlur   = 0;
-      ctx.globalAlpha  = 1;
+      ctx.shadowBlur=0;
+      ctx.globalAlpha=1;
     }
     function drawGrid(){
-      const step = zoom<=0.8 ? 60 : 120;
-      ctx.lineWidth = 1.2;
-      for(let z=0; z<6; z++){
-        const s   = 1 + z*0.15,
-              opa = 0.8 - 0.12*z;
+      const step= zoom<=0.8?60:120;
+      ctx.lineWidth=1.2;
+      for(let z=0;z<6;z++){
+        const s   = 1+z*0.15,
+              opa = 0.8-0.12*z;
         ctx.strokeStyle = `rgba(34,34,34,${opa})`;
-        for(let i=-4; i<=4; i++){
-          for(let j=-4; j<=4; j++){
-            const x = i*step*s, y = j*step*s;
+        for(let i=-4;i<=4;i++){
+          for(let j=-4;j<=4;j++){
+            const x=i*step*s, y=j*step*s;
             if(!onScreen(x,y,step*s*1.4)) continue;
             ctx.beginPath();
             ctx.rect(x,y,step*s,step*s);
@@ -311,62 +343,90 @@
       }
     }
     function burst(x,y,c){
-      for(let i=0; i<12; i++){
-        particles.push({x,y,dx:rand(2),dy:rand(2),r:3,ttl:600,col:c});
+      for(let i=0;i<12;i++){
+        particles.push({
+          x,y,
+          dx:rand(2),
+          dy:rand(2),
+          r:3,
+          ttl:600,
+          col:c
+        });
       }
     }
 
-    // main loop
+    // updateHead uses window.renderHead(...)
+    function updateHead(screenX, screenY, yawIdx, pitchIdx, zoom){
+      const wrap = document.getElementById('dragonHead');
+      const size = TILE * SCALE * zoom;
+      wrap.style.width  = size+'px';
+      wrap.style.height = size+'px';
+      wrap.style.left   = (screenX - size/2)+'px';
+      wrap.style.top    = (screenY - size/2)+'px';
+      const c = document.getElementById('headCanvas');
+      c.style.width  = size+'px';
+      c.style.height = size+'px';
+
+      const yawRad   = (yawIdx   / COLS) * 2 * Math.PI;
+      const pitchRad = ((pitchIdx / (ROWS-1)) - 0.5) * Math.PI;
+      window.renderHead(yawRad, pitchRad);
+    }
+
+    // Main loop
     let last = 0;
     function loop(ts){
-      if(paused){ last = ts; return requestAnimationFrame(loop); }
+      if(paused){ last=ts; return requestAnimationFrame(loop); }
       const dt = (ts - last) || 16;
       last = ts;
 
-      // zoom & movement
-      zoom = lerp(zoom, Math.min(sliderZoom, Math.max(0.5, H/(player.r*4))), ZOOM_EASE);
-      const dx = (target.active?target.x:player.x) - player.x,
-            dy = (target.active?target.y:player.y) - player.y,
+      // Zoom & move
+      zoom = lerp(zoom,
+                  Math.min(sliderZoom, Math.max(0.5, H/(player.r*4))),
+                  ZOOM_EASE
+      );
+      const dx   = (target.active?target.x:player.x) - player.x,
+            dy   = (target.active?target.y:player.y) - player.y,
             dLen = Math.hypot(dx,dy);
       if(dLen>0.5) player.heading = Math.atan2(dy,dx);
       if(player.speedBoost>0) player.speedBoost = Math.max(0, player.speedBoost - dt);
       const speed = player.baseSpeed
-                  * (player.speedBoost>0 ? SPECTRE_SPEED_MULT : 1)
-                  * (frenzy ? 1.3 : 1)
+                  * (player.speedBoost>0?SPECTRE_SPEED_MULT:1)
+                  * (frenzy?1.3:1)
                   * (1 + player.mass * MASS_SPEED_FACTOR);
       if(dLen>1){
         player.x += dx/dLen * speed;
         player.y += dy/dLen * speed;
       }
 
-      // mass decay
+      // Mass decay
       player.mass = Math.max(5,
-        player.mass - (0.000009*player.r*player.r + (player.mass<150?0.002:0.003))*dt
+        player.mass - (0.000009*player.r*player.r +
+                       (player.mass<150?0.002:0.003)) * dt
       );
 
-      // recenter
-      offset.x = W/2 - player.x*zoom;
-      offset.y = H/2 - player.y*zoom;
+      // Recenter
+      offset.x = W/2 - player.x * zoom;
+      offset.y = H/2 - player.y * zoom;
 
-      // background
+      // Background (stars+grid)
       ctx.setTransform(1,0,0,1,0,0);
       ctx.clearRect(0,0,W,H);
-      ctx.fillStyle = '#060616';
+      ctx.fillStyle='#060616';
       ctx.fillRect(0,0,W,H);
-      ctx.fillStyle = '#222';
+      ctx.fillStyle='#222';
       for(const s of stars){
-        const sx = (s.x - player.x*0.1)*zoom + offset.x,
-              sy = (s.y - player.y*0.1)*zoom + offset.y;
+        const sx=(s.x - player.x*0.1)*zoom + offset.x,
+              sy=(s.y - player.y*0.1)*zoom + offset.y;
         if(sx<0||sx>W||sy<0||sy>H) continue;
         ctx.fillRect(sx,sy,s.s,s.s);
       }
       ctx.setTransform(zoom,0,0,zoom,offset.x,offset.y);
       drawGrid();
 
-      // food
-      for(let i=food.length-1; i>=0; i--){
-        const f = food[i];
-        if(dist(player.x,player.y,f.x,f.y) < player.r + f.r){
+      // Food & spawn
+      for(let i=food.length-1;i>=0;i--){
+        const f=food[i];
+        if(dist(player.x,player.y,f.x,f.y)<player.r+f.r){
           player.mass += f.r;
           food.splice(i,1);
           burst(f.x,f.y,'#ff0');
@@ -375,10 +435,10 @@
       }
       spawnFood();
 
-      // foes
-      while(foes.length < (player.mass>=MASS_THRESH ? 18 : 12)) spawnFoe();
+      // Foes
+      while(foes.length < (player.mass>=MASS_THRESH?18:12)) spawnFoe();
       foes.forEach((o,i)=>{
-        const d = dist(player.x,player.y,o.x,o.y);
+        const d=dist(player.x,player.y,o.x,o.y);
         if(player.r>o.r && d<player.r){
           player.mass += o.r*2.5;
           foes.splice(i,1);
@@ -387,11 +447,11 @@
           return;
         }
         if(o.r>player.r && d<o.r){
-          if(player.blink<50) player.blink = BLINK_MS;
+          if(player.blink<50) player.blink=BLINK_MS;
           player.mass = Math.max(5, player.mass - .04*dt);
           document.getElementById('hurtSnd').play().catch(()=>{});
         }
-        const c = 1;
+        const c=1;
         if(o.r<player.r && d<250){
           o.x -= (player.x - o.x)/d * c;
           o.y -= (player.y - o.y)/d * c;
@@ -401,22 +461,17 @@
         }
       });
 
-      // titans
-      if(level >= TITAN_LEVEL){
-        while(titans.length < TITAN_MAX) spawnTitan();
+      // Titans
+      if(level>=TITAN_LEVEL){
+        while(titans.length<TITAN_MAX) spawnTitan();
         titanTimer += dt;
         if(titanTimer > TITAN_RESPAWN_MS){
-          titanTimer = 0;
-          titans.length = 0;
+          titanTimer = 0; titans.length = 0;
         }
       }
       titans.forEach((o,i)=>{
-        const d = dist(player.x,player.y,o.x,o.y);
-        if(d>2000){
-          titans.splice(i,1);
-          spawnTitan();
-          return;
-        }
+        const d=dist(player.x,player.y,o.x,o.y);
+        if(d>2000){ titans.splice(i,1); spawnTitan(); return; }
         if(player.r>o.r && d<player.r){
           player.mass += o.r*5;
           titans.splice(i,1);
@@ -425,32 +480,27 @@
           return;
         }
         if(o.r>player.r && d<o.r){
-          if(player.blink<50) player.blink = BLINK_MS;
+          if(player.blink<50) player.blink=BLINK_MS;
           player.mass = Math.max(5, player.mass - .1*dt);
           document.getElementById('hurtSnd').play().catch(()=>{});
         }
         o.hop -= dt;
-        if(o.hop <= 0){
+        if(o.hop<=0){
           o.hop = 700;
-          const hop = (o.r>player.r ? 120 : -80);
+          const hop = o.r>player.r?120:-80;
           o.x += (player.x - o.x)/d * hop;
           o.y += (player.y - o.y)/d * hop;
         }
       });
 
-      // spectres
-      if(titanKill >= 10) while(spectres.length < SPECTRE_MAX) spawnSpectre();
+      // Spectres
+      if(titanKill>=10) while(spectres.length<SPECTRE_MAX) spawnSpectre();
       spectres.forEach((s,i)=>{
         s.dash -= dt;
-        const d      = dist(player.x,player.y,s.x,s.y),
-              ignore = player.mass < SAFE_PLAYER_MASS;
-        if(d>2200){
-          spectres.splice(i,1);
-          spawnSpectre();
-          return;
-        }
+        const d=dist(player.x,player.y,s.x,s.y), ignore=player.mass<SAFE_PLAYER_MASS;
+        if(d>2200){ spectres.splice(i,1); spawnSpectre(); return; }
         if(!ignore && d<player.r){
-          player.mass      += s.r*7;
+          player.mass += s.r*7;
           player.speedBoost = SPECTRE_SPEED_MS;
           spectres.splice(i,1);
           document.getElementById('eatSnd').play().catch(()=>{});
@@ -459,27 +509,23 @@
           return;
         }
         if(!ignore && d<s.r && s.r>player.r){
-          if(player.blink<50) player.blink = BLINK_MS;
+          if(player.blink<50) player.blink=BLINK_MS;
           player.mass = Math.max(5, player.mass - .2*dt);
           document.getElementById('hurtSnd').play().catch(()=>{});
         }
-        const jump = ignore ? -100 : (s.r>player.r ? 160 : -100);
-        if(s.dash <= 0){
-          s.dash = 400;
-          s.x   += (player.x - s.x)/d * jump;
-          s.y   += (player.y - s.y)/d * jump;
+        const jump = ignore?-100:(s.r>player.r?160:-100);
+        if(s.dash<=0){
+          s.dash=400;
+          s.x += (player.x - s.x)/d * jump;
+          s.y += (player.y - s.y)/d * jump;
         }
       });
 
-      // reapers
+      // Reapers
       reapers.forEach((r,i)=>{
         r.charge -= dt;
-        const d      = dist(player.x,player.y,r.x,r.y),
-              ignore = player.mass < SAFE_PLAYER_MASS;
-        if(d>2400){
-          reapers.splice(i,1);
-          return;
-        }
+        const d=dist(player.x,player.y,r.x,r.y), ignore=player.mass<SAFE_PLAYER_MASS;
+        if(d>2400){ reapers.splice(i,1); return; }
         if(!ignore && d<player.r){
           player.mass += r.r*10;
           reapers.splice(i,1);
@@ -487,30 +533,27 @@
           return;
         }
         if(!ignore && d<r.r && r.r>player.r){
-          if(player.blink<50) player.blink = BLINK_MS;
+          if(player.blink<50) player.blink=BLINK_MS;
           player.mass = Math.max(5, player.mass - .25*dt);
           document.getElementById('hurtSnd').play().catch(()=>{});
         }
-        const step = ignore ? -100 : (r.r>player.r ? 130 : -100);
-        if(r.charge <= 0){
-          r.charge = 300;
-          r.x     += (player.x - r.x)/d * step;
-          r.y     += (player.y - r.y)/d * step;
+        const step = ignore?-100:(r.r>player.r?130:-100);
+        if(r.charge<=0){
+          r.charge=300;
+          r.x += (player.x - r.x)/d * step;
+          r.y += (player.y - r.y)/d * step;
         }
       });
 
-      // pill / frenzy
-      if(pill.active && dist(player.x,player.y,pill.x,pill.y) < player.r + pill.r){
-        frenzy     = true;
-        F_TIME     = 10000;
-        pill.active = false;
+      // Pill / Frenzy
+      if(pill.active && dist(player.x,player.y,pill.x,pill.y)<player.r+pill.r){
+        frenzy=true; F_TIME=10000; pill.active=false;
         document.getElementById('frenzySnd').play().catch(()=>{});
         for(let i=0;i<40;i++){
-          const a = Math.random()*Math.PI*2,
-                R = 120+Math.random()*120;
+          const a=Math.random()*Math.PI*2, R=120+Math.random()*120;
           food.push({
-            cx:player.x, cy:player.y,
-            ang:a, baseR:R, angV:.004+Math.random()*.003,
+            cx:player.x, cy:player.y, ang:a,
+            baseR:R, angV:.004+Math.random()*.003,
             x:player.x+Math.cos(a)*R,
             y:player.y+Math.sin(a)*R,
             r:5, frenzy:true, col:'#ff39ff'
@@ -519,61 +562,64 @@
       }
       if(frenzy){
         F_TIME -= dt;
-        if(F_TIME <= 0){
-          frenzy = false;
-          food.forEach(f=>f.frenzy=false);
-        }
+        if(F_TIME<=0){ frenzy=false; food.forEach(f=>f.frenzy=false); }
       }
       food.forEach(f=>{
         if(f.frenzy){
-          f.ang += f.angV * dt;
+          f.ang += f.angV*dt;
           f.x   = f.cx + Math.cos(f.ang)*f.baseR;
           f.y   = f.cy + Math.sin(f.ang)*f.baseR;
         }
       });
       if(!pill.active && !frenzy){
         pill.cd += dt;
-        if(pill.cd > 25000 + Math.random()*10000) spawnPill();
+        if(pill.cd>25000+Math.random()*10000) spawnPill();
       }
 
-      // beacons / radar
+      // Beacons / Radar
       beacons.forEach((b,i)=>{
-        if(dist(player.x,player.y,b.x,b.y) < player.r + b.r){
-          beacons.length = 0;
-          radarActive = true;
-          document.getElementById('radarWrap').style.display = 'block';
+        if(dist(player.x,player.y,b.x,b.y)<player.r+b.r){
+          beacons.length=0; radarActive=true;
+          document.getElementById('radarWrap').style.display='block';
         }
       });
 
-      // size, tail, blink
+      // Size, Tail, Blink
       player.r = 10 + player.mass/15;
-      level    = Math.floor(player.mass/100) + 1;
+      level    = Math.floor(player.mass/100)+1;
       player.tail.unshift({x:player.x,y:player.y});
-      while(player.tail.length > Math.ceil(player.mass/3*(1+EXTRA_TAIL_PCT))){
+      while(player.tail.length>Math.ceil(player.mass/3*(1+EXTRA_TAIL_PCT))){
         player.tail.pop();
       }
-      if(player.blink > 0) player.blink -= dt;
+      if(player.blink>0) player.blink -= dt;
 
-      // draw glows
-      food.forEach(f=>glow(f.x,f.y,f.r, f.frenzy?f.col:'#ff0', f.frenzy?.8:.65));
+      // Draw Glows
+      food.forEach(f=>glow(f.x,f.y,f.r,f.frenzy?f.col:'#ff0',f.frenzy?.8:.65));
       foes.forEach(o=>glow(o.x,o.y,o.r,'#f00',.8));
       titans.forEach(o=>glow(o.x,o.y,o.r,'#cc00ff',.9));
-      spectres.forEach(s=>glow(s.x,s.y,s.r,
-        mix('#ffde59','#ff39ff',(Math.sin((ts+s.x)*.006)+1)/2), .9));
-      reapers.forEach(r=>glow(r.x,r.y,r.r,
-        mix('#ff8800','#ff39ff',(Math.sin((ts+r.y)*.004)+1)/2), .9));
+      spectres.forEach(s=>glow(
+        s.x,s.y,s.r,
+        mix('#ffde59','#ff39ff',(Math.sin((ts+s.x)*.006)+1)/2),
+        .9
+      ));
+      reapers.forEach(r=>glow(
+        r.x,r.y,r.r,
+        mix('#ff8800','#ff39ff',(Math.sin((ts+r.y)*.004)+1)/2),
+        .9
+      ));
       if(pill.active){
         const pH = (Math.sin(ts*.005)+1)/2;
-        glow(pill.x,pill.y,pill.r, mix('#00aaff','#ff39ff',pH), .95);
+        glow(pill.x,pill.y,pill.r,mix('#00aaff','#ff39ff',pH),.95);
       }
 
-      // tail & frenzy aura
-      const skip = Math.max(1, Math.ceil(player.tail.length/MAX_TAIL_DRAW));
+      // Tail & Frenzy Aura
+      const skip = Math.max(1,Math.ceil(player.tail.length/MAX_TAIL_DRAW));
       for(let i=0; i<player.tail.length; i+=skip){
         const p = player.tail[i];
-        glow(p.x,p.y,
+        glow(
+          p.x,p.y,
           player.r*(1 - i/player.tail.length),
-          mix('#00e4b8','#ff39ff', i/player.tail.length),
+          mix('#00e4b8','#ff39ff',i/player.tail.length),
           .3
         );
       }
@@ -585,24 +631,24 @@
         );
         g.addColorStop(0,'#ff39ff');
         g.addColorStop(1,'transparent');
-        ctx.fillStyle = g;
+        ctx.fillStyle=g;
         ctx.beginPath();
         ctx.arc(player.x,player.y,player.r*8,0,Math.PI*2);
         ctx.fill();
         ctx.globalAlpha = 1;
       }
 
-      // player glow
+      // Player Glow
       glow(
-        player.x, player.y, player.r,
+        player.x,player.y,player.r,
         player.blink>0
-          ? (player.blink%200<100 ? '#fff' : '#ff44ff')
+          ? (player.blink%200<100?'#fff':'#ff44ff')
           : '#00e4b8',
         1
       );
 
-      // update 3D head
-      const yawIdx   = Math.round(((player.heading % (2*Math.PI)) + 2*Math.PI)/(2*Math.PI)*COLS) % COLS;
+      // Update 3D Head
+      const yawIdx   = Math.round(((player.heading%(2*Math.PI))+2*Math.PI)/(2*Math.PI)*COLS)%COLS;
       const pitchIdx = Math.round(((-Math.sin(player.heading)+1)/2)*(ROWS-1));
       updateHead(
         player.x*zoom + offset.x,
@@ -610,28 +656,27 @@
         yawIdx, pitchIdx, zoom
       );
 
-      // particles
+      // Particles
       particles.forEach((p,i)=>{
-        p.x += p.dx; p.y += p.dy; p.ttl -= dt;
+        p.x+=p.dx; p.y+=p.dy; p.ttl-=dt;
         glow(p.x,p.y,p.r,p.col,.6);
-        if(p.ttl <= 0) particles.splice(i,1);
+        if(p.ttl<=0) particles.splice(i,1);
       });
 
-      // radar
+      // Radar
       if(radarActive){
         rctx.clearRect(0,0,70,70);
-        rctx.strokeStyle = '#666'; rctx.lineWidth = 1;
+        rctx.strokeStyle='#666'; rctx.lineWidth=1;
         rctx.beginPath();
         rctx.moveTo(35,0); rctx.lineTo(35,70);
         rctx.moveTo(0,35); rctx.lineTo(70,35);
         rctx.stroke();
         const mc    = Math.max(C_RING_DIST,Math.abs(player.x),Math.abs(player.y))||1,
-              scale = (30 - RADAR_PADDING)/mc;
+              scale = (30-RADAR_PADDING)/mc;
         const pip = (arr,col,s)=>{
-          rctx.fillStyle = col;
+          rctx.fillStyle=col;
           arr.forEach(o=>{
-            const x = 35 + o.x*scale,
-                  y = 35 + o.y*scale;
+            const x=35+o.x*scale, y=35+o.y*scale;
             if(x<0||x>70||y<0||y>70) return;
             if(s==='d'){
               rctx.beginPath();
@@ -670,7 +715,7 @@
     addEventListener('pointerdown', ()=>{
       const bg = document.getElementById('backgroundMusic');
       if(bg && bg.paused) bg.play().catch(()=>{});
-    }, { once: true });
+    }, { once:true });
   </script>
 </body>
 </html>
